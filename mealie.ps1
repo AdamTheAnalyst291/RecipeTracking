@@ -15,14 +15,15 @@
   update           Back up, then download and start the version in docker-compose.yml
   backup           Save a full copy of Mealie's data to the backup folder
   restore <file>   Replace ALL Mealie data with a backup file
-  schedule-backup  Add a weekly backup task to Windows Task Scheduler (Sundays 3am)
+  schedule-backup  Add weekly backup (Sundays 3am) and recipe audit (3:30am) tasks to Task Scheduler
+  audit            Check every recipe for missing steps, unit words in notes and diet tags that clash
   power            Keep the laptop awake while plugged in (lid close does nothing)
   help             Show this list
 #>
 param(
   [Parameter(Position = 0)]
   [ValidateSet('setup', 'start', 'stop', 'restart', 'status', 'logs', 'url', 'update',
-               'backup', 'restore', 'schedule-backup', 'power', 'help')]
+               'backup', 'restore', 'schedule-backup', 'audit', 'power', 'help')]
   [string]$Command = 'help',
 
   [Parameter(Position = 1)]
@@ -37,6 +38,7 @@ Set-Location $Root
 
 $Volume   = 'mealie-data'   # fixed name, set in docker-compose.yml
 $TaskName = 'Mealie weekly backup'
+$AuditTaskName = 'Mealie weekly recipe audit'
 
 # ---------------------------------------------------------------- helpers
 
@@ -238,6 +240,96 @@ function Invoke-ScheduleBackup {
     -Description 'Backs up Mealie data (mealie-home repo).' -Force | Out-Null
   if ($?) { Write-Ok "Scheduled '$TaskName' for Sundays at 3am. Backups go to $(Get-BackupDir)." }
   else { Stop-WithError "Couldn't create the scheduled task." }
+
+  $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
+    -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$Root\mealie.ps1`" audit"
+  $trigger = New-ScheduledTaskTrigger -Weekly -DaysOfWeek Sunday -At 3:30am
+  Register-ScheduledTask -TaskName $AuditTaskName -Action $action -Trigger $trigger -Settings $settings `
+    -Description 'Checks Mealie recipes for data problems (mealie-home repo).' -Force | Out-Null
+  if ($?) { Write-Ok "Scheduled '$AuditTaskName' for Sundays at 3:30am. Reports go to $(Get-BackupDir)." }
+  else { Stop-WithError "Couldn't create the audit task." }
+}
+
+# Patterns for the diet and allergen checks. They match food names plus notes, so a
+# "gluten-free" or "vegan" note, or a plant-based food, clears the match.
+$AuditMeat   = '\b(chicken|beef|pork|lamb|veal|turkey|shrimp|fish|anchov\w*|bacon|sausage|steak|chuck|ham|gelatin)\b'
+$AuditDairy  = '\b(milk|butter|cheese|cream|parmesan|mozzarella|provolone|cheddar|yogurt|ghee|ranch)\b'
+$AuditGluten = '\b(orzo|wonton|egg roll|soy sauce|worcestershire|bread ?crumbs?|pasta|flour|panko|couscous|bulgur|barley|beer)\b'
+$AuditNuts   = '\b(almond\w*|walnut\w*|pistachio\w*|peanut\w*|cashew\w*|pecan\w*|hazelnut\w*|macadamia|pine nut\w*)\b'
+$AuditPlant  = 'gluten[- ]free|vegan|plant|almond milk|oat milk|coconut|peanut butter|rice flour|tapioca|tamari|chickpea flour'
+$AuditUnitWords = @('clove', 'bunch', 'head', 'stick', 'knob', 'can', 'pinch', 'sprig', 'slice')
+
+function Get-MealieToken {
+  $token = $env:MEALIE_API_TOKEN
+  if (-not $token) { $token = [Environment]::GetEnvironmentVariable('MEALIE_API_TOKEN', 'User') }
+  if (-not $token) {
+    Stop-WithError "Set an API token first: in Mealie open your profile > API Tokens, then run`n  [Environment]::SetEnvironmentVariable('MEALIE_API_TOKEN', '<token>', 'User')"
+  }
+  return $token
+}
+
+function Invoke-Audit {
+  if (-not (Test-MealieUp)) { Stop-WithError "Mealie isn't answering on port $(Get-Port). Run '.\mealie.cmd start'." }
+  $headers = @{ Authorization = "Bearer $(Get-MealieToken)" }
+  $api = "http://localhost:$(Get-Port)/api"
+
+  Write-Step "Reading recipes"
+  $list = (Invoke-RestMethod -Uri "$api/recipes?perPage=-1" -Headers $headers).items
+  $problems = New-Object System.Collections.Generic.List[string]
+
+  foreach ($item in $list) {
+    $r = Invoke-RestMethod -Uri "$api/recipes/$($item.slug)" -Headers $headers
+    $issues = @()
+    $tags = @($r.tags | ForEach-Object { $_.name })
+
+    if (@($r.recipeInstructions).Count -eq 0) { $issues += 'no directions' }
+    if (-not $r.recipeServings -and -not $r.recipeYieldQuantity) { $issues += 'no yield or servings' }
+    if (-not $r.prepTime -and -not $r.totalTime) { $issues += 'no prep or total time' }
+    if (@($r.recipeCategory).Count -eq 0) { $issues += 'no category' }
+    if ($r.description -match 'https?://' -and -not $r.orgURL) { $issues += 'source link in description, not in Source field' }
+
+    $lines = @()
+    foreach ($ing in @($r.recipeIngredient)) {
+      $note = [string]$ing.note
+      if (-not $ing.food) {
+        if ($ing.note -or $ing.originalText) { $issues += "ingredient not linked to a food: '$($ing.note)$($ing.originalText)'" }
+        continue
+      }
+      $lines += "$($ing.food.name) $note"
+      $first = ($note -split ',')[0].Trim().ToLower()
+      if (-not $ing.unit -and $AuditUnitWords -contains $first) { $issues += "'$first' is in the note, not the unit: $($ing.food.name)" }
+    }
+    $animalFree = @($lines | Where-Object { $_ -notmatch $AuditPlant })
+    $meat  = @($animalFree | Where-Object { $_ -match $AuditMeat })
+    $dairy = @($animalFree | Where-Object { $_ -match $AuditDairy })
+    $other = @($animalFree | Where-Object { $_ -match '\beggs?\b|honey|mayonnaise|fish sauce' })
+    $gluten = @($lines | Where-Object { $_ -match $AuditGluten -and $_ -notmatch $AuditPlant })
+    $nuts  = @($lines | Where-Object { $_ -match $AuditNuts -and $_ -notmatch 'nut[- ]free' })
+
+    if ($tags -contains 'Vegan' -and ($meat + $dairy + $other).Count) { $issues += "tagged Vegan but has: $(($meat + $dairy + $other) -join '; ')" }
+    if ($tags -contains 'Vegetarian' -and $meat.Count) { $issues += "tagged Vegetarian but has: $($meat -join '; ')" }
+    if ($tags -contains 'Dairy-Free' -and $dairy.Count) { $issues += "tagged Dairy-Free but has: $($dairy -join '; ')" }
+    if ($tags -contains 'Gluten-Free' -and $gluten.Count) { $issues += "tagged Gluten-Free but has: $($gluten -join '; ')" }
+    if ($tags -notcontains 'Contains Nuts' -and $nuts.Count) { $issues += "has nuts but no 'Contains Nuts' tag: $($nuts -join '; ')" }
+
+    foreach ($i in $issues) { $problems.Add("$($r.name): $i") }
+  }
+
+  # Foods that differ only by capital letters (e.g. "Pepper" and "pepper") split shopping lists.
+  $foods = (Invoke-RestMethod -Uri "$api/foods?perPage=-1" -Headers $headers).items
+  $foods | Group-Object { $_.name.ToLower() } | Where-Object { $_.Count -gt 1 } | ForEach-Object {
+    $problems.Add("Duplicate food: $(($_.Group | ForEach-Object { $_.name }) -join ' / ')")
+  }
+
+  $report = Join-Path (Get-BackupDir) "mealie-audit_$(Get-Date -Format 'yyyy-MM-dd').txt"
+  $header = "Mealie recipe audit, $(Get-Date -Format 'yyyy-MM-dd HH:mm'): $($list.Count) recipes, $($problems.Count) problems"
+  @($header, '') + $problems | Out-File -FilePath $report -Encoding utf8
+  Get-ChildItem (Get-BackupDir) -Filter 'mealie-audit_*.txt' |
+    Sort-Object Name -Descending | Select-Object -Skip 8 | Remove-Item -Force
+
+  $problems | ForEach-Object { Write-Host "  $_" }
+  if ($problems.Count) { Write-Host "$($problems.Count) problems in $($list.Count) recipes. Report: $report" -ForegroundColor Yellow }
+  else { Write-Ok "No problems in $($list.Count) recipes. Report: $report" }
 }
 
 function Invoke-Power {
@@ -265,6 +357,7 @@ switch ($Command) {
   'backup'          { Invoke-Backup }
   'restore'         { Invoke-Restore $Arg }
   'schedule-backup' { Invoke-ScheduleBackup }
+  'audit'           { Invoke-Audit }
   'power'           { Invoke-Power }
   default {
     Write-Host @'
@@ -278,7 +371,8 @@ Usage:  .\mealie.cmd <command> [argument]
   update           Back up, then download and start the version in docker-compose.yml
   backup           Save a full copy of Mealie's data to the backup folder
   restore <file>   Replace ALL Mealie data with a backup file
-  schedule-backup  Weekly backup task in Windows Task Scheduler (Sundays 3am)
+  schedule-backup  Weekly backup (Sundays 3am) and recipe audit (3:30am) in Task Scheduler
+  audit            Check recipes for data problems; report goes to the backup folder
   power            Keep the laptop awake while plugged in
 '@
   }
