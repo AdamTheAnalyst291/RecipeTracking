@@ -67,6 +67,7 @@ Copy `.env.example` to `.env` (`setup` does this for you) and edit:
 - `MEALIE_PORT`, `GROCY_PORT`, `ACTUAL_PORT`: ports on the laptop (defaults 9925, 9283, 5006)
 - `BASE_URL`: the address other devices use for Mealie; `setup` fills in the laptop's Wi-Fi address
 - `BACKUP_DIR`, `BACKUP_KEEP`: where backups go and how many to keep
+- `BACKUP_COPY_DIR`: optional second copy off the laptop, e.g. `G:\My Drive\MealieBackups` with Google Drive for desktop signed in to a personal account (same `BACKUP_KEEP`). If the drive isn't there the local backup still happens and the command reports the missed copy.
 - `SMTP_*`: optional email for invites and password resets (Gmail app password works)
 
 Run `.\mealie.cmd restart` after changing `.env`.
