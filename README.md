@@ -42,6 +42,15 @@ Self-hosted kitchen apps running on a Windows laptop with Docker Desktop:
 | `.\mealie.cmd backup` | Full copy of each app's data → `OneDrive\MealieBackups` (keeps newest 8 per app) |
 | `.\mealie.cmd restore <file>` | Replace one app's data with a backup; the file name says which app (backs up current data first) |
 | `.\mealie.cmd update` | Back up, then run the versions in `docker-compose.yml` |
+| `.\mealie.cmd audit` | Check every Mealie recipe for data problems (see below) |
+
+## Recipe audit
+
+`.\mealie.cmd audit` reads every recipe through the Mealie API and lists problems: no directions, yield or times; unit words such as "clove" left in an ingredient's note; foods that differ only by capitals; and diet tags that clash with ingredients (Vegan with honey, Gluten-Free with orzo, nuts without a Contains Nuts tag). The report is saved to the backup folder as `mealie-audit_<date>.txt` (newest 8 kept). `schedule-backup` also runs it every Sunday at 3:30am.
+
+It needs a Mealie API token: in Mealie open your profile > API Tokens, then in PowerShell run `[Environment]::SetEnvironmentVariable('MEALIE_API_TOKEN', '<token>', 'User')`. The token stays on the laptop, never in this repo.
+
+When entering a recipe, use foods already in Mealie's list (it suggests them as you type), put clove/bunch/can in the unit box, and check the diet tags against the ingredients.
 
 ## Updating
 
