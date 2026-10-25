@@ -218,6 +218,25 @@ function Invoke-Backup {
   if ($failed) { Stop-WithError "Backup failed for: $($failed -join ', ')." }
 
   Write-Ok "Backups saved in $dir"
+  Copy-BackupOffLaptop $dir $stamp $keep
+}
+
+# Optional second copy off the laptop, e.g. a Google Drive for desktop folder.
+function Copy-BackupOffLaptop($Dir, $Stamp, [int]$Keep) {
+  $copyDir = Get-EnvValue 'BACKUP_COPY_DIR' ''
+  if (-not $copyDir) { return }
+  $drive = Split-Path -Qualifier $copyDir -ErrorAction SilentlyContinue
+  if ($drive -and -not (Test-Path "$drive\")) {
+    Stop-WithError "Local backups are fine, but $drive isn't there, so nothing was copied to $copyDir. Is Google Drive for desktop running and signed in?"
+  }
+  New-Item -ItemType Directory -Force -Path $copyDir | Out-Null
+  foreach ($app in $Apps) {
+    $file = Join-Path $Dir "$($app.Volume)_$Stamp.tar.gz"
+    Copy-Item $file $copyDir -Force -ErrorAction Stop
+    Get-ChildItem $copyDir -Filter "$($app.Volume)_*.tar.gz" |
+      Sort-Object Name -Descending | Select-Object -Skip $Keep | Remove-Item -Force
+  }
+  Write-Ok "Copied to $copyDir"
 }
 
 function Invoke-Restore([string]$File) {
