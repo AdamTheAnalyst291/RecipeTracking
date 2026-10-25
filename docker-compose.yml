@@ -1,0 +1,39 @@
+# Mealie recipe manager — single container, SQLite database.
+# Settings come from .env (copy .env.example; `mealie setup` does this for you).
+# The image version is pinned on purpose: Dependabot opens a PR when a new
+# release is out, you read the notes, merge, then run `mealie update`.
+
+name: mealie-home
+
+services:
+  mealie:
+    image: ghcr.io/mealie-recipes/mealie:v3.29.0
+    container_name: mealie
+    restart: always
+    ports:
+      - "${MEALIE_PORT:-9925}:9000"
+    deploy:
+      resources:
+        limits:
+          memory: 1000M
+    volumes:
+      - mealie-data:/app/data/
+    environment:
+      ALLOW_SIGNUP: "${ALLOW_SIGNUP:-false}"
+      PUID: 1000
+      PGID: 1000
+      TZ: "${TZ:-America/New_York}"
+      BASE_URL: "${BASE_URL:-http://localhost:9925}"
+      # Optional email (invites, password resets). Fill these in .env to enable.
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-587}"
+      SMTP_FROM_NAME: "${SMTP_FROM_NAME:-Mealie}"
+      SMTP_AUTH_STRATEGY: "${SMTP_AUTH_STRATEGY:-TLS}"
+      SMTP_FROM_EMAIL: "${SMTP_FROM_EMAIL:-}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
+
+volumes:
+  # Fixed name so the backup/restore commands can always find it.
+  mealie-data:
+    name: mealie-data
