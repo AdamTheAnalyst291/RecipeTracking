@@ -6,7 +6,7 @@ on:
 
 jobs:
   compose:
-    name: Compose file is valid and Mealie starts
+    name: Compose file is valid and all apps start
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -14,26 +14,39 @@ jobs:
         run: cp .env.example .env
       - name: Validate docker-compose.yml
         run: docker compose config --quiet
-      - name: Start Mealie
+      - name: Start Mealie, Grocy and Actual Budget
         run: docker compose up -d
-      - name: Wait for Mealie to answer
+      - name: Wait for all three to answer
         run: |
+          up() {
+            curl -fsS -o /dev/null http://localhost:9925/api/app/about &&
+            curl -fsSL -o /dev/null http://localhost:9283/ &&
+            curl -fsS -o /dev/null http://localhost:5006/health
+          }
           for i in $(seq 1 60); do
-            if curl -fsS http://localhost:9925/api/app/about; then echo; echo "Mealie is up"; exit 0; fi
+            if up; then echo "All three are up"; exit 0; fi
             sleep 3
           done
+          docker compose ps
           docker compose logs
           exit 1
-      - name: Back up and restore round trip
+      - name: Back up and restore round trip, each app
         run: |
+          up() {
+            curl -fsS -o /dev/null http://localhost:9925/api/app/about &&
+            curl -fsSL -o /dev/null http://localhost:9283/ &&
+            curl -fsS -o /dev/null http://localhost:5006/health
+          }
           docker compose stop
           mkdir -p backup
-          docker run --rm -v mealie-data:/data:ro -v "$PWD/backup:/backup" alpine tar czf /backup/test.tar.gz -C /data .
-          test -s backup/test.tar.gz
-          docker run --rm -v mealie-data:/data -v "$PWD/backup:/backup:ro" alpine sh -c "find /data -mindepth 1 -delete && tar xzf /backup/test.tar.gz -C /data"
+          for v in mealie-data grocy-data actual-data; do
+            docker run --rm -v "$v:/data:ro" -v "$PWD/backup:/backup" alpine tar czf "/backup/$v.tar.gz" -C /data .
+            test -s "backup/$v.tar.gz"
+            docker run --rm -v "$v:/data" -v "$PWD/backup:/backup:ro" alpine sh -c "find /data -mindepth 1 -delete && tar xzf /backup/$v.tar.gz -C /data"
+          done
           docker compose start
           for i in $(seq 1 60); do
-            curl -fsS http://localhost:9925/api/app/about >/dev/null && echo "Up after restore" && exit 0
+            if up; then echo "All three up after restore"; exit 0; fi
             sleep 3
           done
           docker compose logs

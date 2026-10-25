@@ -1,6 +1,8 @@
-# Mealie recipe manager — single container, SQLite database.
+# Home kitchen stack: Mealie (recipes, meal plans, shopping list), Grocy
+# (pantry stock and prices) and Actual Budget (money). Each is one container
+# with its own SQLite data in a named volume.
 # Settings come from .env (copy .env.example; `mealie setup` does this for you).
-# The image version is pinned on purpose: Dependabot opens a PR when a new
+# Image versions are pinned on purpose: Dependabot opens a PR when a new
 # release is out, you read the notes, merge, then run `mealie update`.
 
 name: mealie-home
@@ -33,7 +35,43 @@ services:
       SMTP_USER: "${SMTP_USER:-}"
       SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
 
+  # Pantry: what's in the house and what it cost. First login admin / admin.
+  grocy:
+    image: ghcr.io/linuxserver/grocy:4.7.1
+    container_name: grocy
+    restart: always
+    ports:
+      - "${GROCY_PORT:-9283}:80"
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+    volumes:
+      - grocy-data:/config
+    environment:
+      PUID: 1000
+      PGID: 1000
+      TZ: "${TZ:-America/New_York}"
+
+  # Budget and bank transactions (SimpleFIN bank sync is built in).
+  actual:
+    image: actualbudget/actual-server:26.10.0
+    container_name: actual
+    restart: always
+    ports:
+      - "${ACTUAL_PORT:-5006}:5006"
+    deploy:
+      resources:
+        limits:
+          memory: 500M
+    volumes:
+      - actual-data:/data
+
 volumes:
-  # Fixed name so the backup/restore commands can always find it.
+  # Fixed names so the backup/restore commands can always find them.
   mealie-data:
     name: mealie-data
+  grocy-data:
+    name: grocy-data
+  actual-data:
+    name: actual-data
