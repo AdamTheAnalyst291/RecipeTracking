@@ -9,7 +9,7 @@ jobs:
     name: Compose file is valid and all apps start
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Use example settings
         run: cp .env.example .env
       - name: Validate docker-compose.yml
@@ -59,7 +59,7 @@ jobs:
     name: PowerShell script passes linting
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Parse and lint mealie.ps1
         shell: pwsh
         run: |
