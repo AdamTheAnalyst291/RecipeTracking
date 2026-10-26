@@ -9,35 +9,10 @@ Actively build and sharpen the project's domain model as you design. This is the
 
 ## File structure
 
-Most repos have a single context:
+<!-- RecipeTracking adaptation: see docs/agents/domain.md -->
 
-```
-/
-├── GLOSSARY.md
-├── docs/
-│   └── adr/
-│       ├── 0001-event-sourced-orders.md
-│       └── 0002-postgres-for-write-model.md
-└── src/
-```
-
-If a `GLOSSARY-MAP.md` exists at the root, the repo has multiple contexts. The map points to where each one lives:
-
-```
-/
-├── GLOSSARY-MAP.md
-├── docs/
-│   └── adr/                          ← system-wide decisions
-├── src/
-│   ├── ordering/
-│   │   ├── GLOSSARY.md
-│   │   └── docs/adr/                 ← context-specific decisions
-│   └── billing/
-│       ├── GLOSSARY.md
-│       └── docs/adr/
-```
-
-Create files lazily: only when you have something to write. If no `GLOSSARY.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
+- `GLOSSARY.md` at the repo root. Create it lazily: only when the first term is resolved.
+- ADRs live in the Notion database "Decisions" (https://app.notion.com/p/9ff4eae7895e41f5b290222abad9a118), never in `docs/adr/` (ADR-14). Create a new ADR page with Status `Proposed`; it becomes `Accepted` only after Adam agrees.
 
 ## During the session
 

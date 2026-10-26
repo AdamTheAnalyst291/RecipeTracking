@@ -1,30 +1,51 @@
 # ADR Format
 
-ADRs live in `docs/adr/` and use sequential numbering: `0001-slug.md`, `0002-slug.md`, etc.
+<!-- RecipeTracking adaptation: ADRs live in Notion, not docs/adr/ (ADR-14). See docs/agents/domain.md. -->
 
-Create the `docs/adr/` directory lazily: only when the first ADR is needed.
+ADRs live in the Notion database "Decisions" under the Home Server page (https://app.notion.com/p/9ff4eae7895e41f5b290222abad9a118), one page per decision. Never create `docs/adr/` in the repo.
 
-## Template
+The `ADR` number is assigned automatically by Notion. Refer to decisions as `ADR-<n>`.
+
+## Properties
+
+- **Title**: short title of the decision
+- **Status**: `Proposed` when created; set to `Accepted` only after Adam agrees. Also `Superseded` or `Rejected`.
+- **Area**: one or more of Home server, Recipes, Pantry, Budget, Kitchen bridge, Security, Ways of working
+- **Decided on**: the date
+- **Trello card**, **GitHub** (PR URL), **Plan page**: links, when they exist
+- **Supersedes** / **Superseded by**: relations to other ADRs
+
+## Body
+
+Match the existing pages:
 
 ```md
-# {Short title of the decision}
+## Context
 
-{1-3 sentences: what's the context, what did we decide, and why.}
+{why this came up}
+
+## Decision
+
+{what we decided, as short bullets}
+
+## Options considered
+
+{only alternatives worth remembering}
+
+## Consequences
+
+{only non-obvious downstream effects}
+
+## Revisit when
+
+{optional: the signal that should reopen it}
 ```
 
-That's it. An ADR can be a single paragraph. The value is in recording *that* a decision was made and *why*, not in filling out sections.
+An ADR can be short. The value is in recording *that* a decision was made and *why*.
 
-## Optional sections
+## Changing a decision
 
-Only include these when they add genuine value. Most ADRs won't need them.
-
-- **Status** frontmatter (`proposed | accepted | deprecated | superseded by ADR-NNNN`): useful when decisions are revisited
-- **Considered Options**: only when the rejected alternatives are worth remembering
-- **Consequences**: only when non-obvious downstream effects need to be called out
-
-## Numbering
-
-Scan `docs/adr/` for the highest existing number and increment by one.
+Never edit an accepted ADR's decision. Write a new ADR that supersedes it, and set the old one to `Superseded`.
 
 ## When to offer an ADR
 

@@ -9,6 +9,13 @@ metadata:
     url: "https://github.com/humanlayer/skills/blob/main/plugins/show-me/skills/show-me/SKILL.md"
 ---
 
+<!-- RecipeTracking adaptation -->
+**In this repo**, the body must also follow `.github/pull_request_template.md` and the project's PR rules:
+
+- Keep any attribution lines the session requires as the very first lines.
+- Then the template's `Card: <Trello card URL>` and `Decision: ADR-<n>` lines (ADR-14).
+- Put the **Summary** below under the template's `## What changed` heading, and the **Evidence** under `## How it was tested`. Add **Merge Danger** as a final section.
+
 Use this template for writing the PR body:
 
 ```markdown
