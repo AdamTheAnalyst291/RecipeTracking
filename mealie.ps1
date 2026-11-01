@@ -1,17 +1,18 @@
 <#
 .SYNOPSIS
   One command to run and look after the kitchen apps on this Windows laptop:
-  Mealie (recipes), Grocy (pantry) and Actual Budget (money).
+  Mealie (recipes), Grocy (pantry) and Actual Budget (money), plus the
+  kitchen bridge that brings bank transactions into Actual.
 
 .DESCRIPTION
   Usage:  .\mealie.cmd <command> [argument]
 
   setup            First-time setup: create .env, download the apps, start them
-  start            Start all three apps
+  start            Start all the apps
   stop             Stop them (your data is kept)
   restart          Restart them (after editing .env)
   status           Are they running and answering?
-  logs [app]       Follow the live logs (Ctrl+C to exit); app = mealie, grocy or actual
+  logs [app]       Follow the live logs (Ctrl+C to exit); app = mealie, grocy, actual or bridge
   url              Addresses to open on this laptop and on your phone
   update           Back up, then download and start the versions in docker-compose.yml
   backup           Save a full copy of each app's data to the backup folder
@@ -45,7 +46,9 @@ $AuditTaskName = 'Mealie weekly recipe audit'
 $Apps = @(
   @{ Name = 'Mealie';        Service = 'mealie'; Volume = 'mealie-data'; PortKey = 'MEALIE_PORT'; DefaultPort = '9925'; Health = '/api/app/about' },
   @{ Name = 'Grocy';         Service = 'grocy';  Volume = 'grocy-data';  PortKey = 'GROCY_PORT';  DefaultPort = '9283'; Health = '/' },
-  @{ Name = 'Actual Budget'; Service = 'actual'; Volume = 'actual-data'; PortKey = 'ACTUAL_PORT'; DefaultPort = '5006'; Health = '/health' }
+  @{ Name = 'Actual Budget'; Service = 'actual'; Volume = 'actual-data'; PortKey = 'ACTUAL_PORT'; DefaultPort = '5006'; Health = '/health' },
+  # Bank sync page; published on 127.0.0.1 only, so no phone address.
+  @{ Name = 'Bridge';        Service = 'bridge'; Volume = 'bridge-data'; PortKey = 'BRIDGE_PORT'; DefaultPort = '8787'; Health = '/health'; LaptopOnly = $true }
 )
 
 # ---------------------------------------------------------------- helpers
@@ -145,7 +148,7 @@ function Show-Urls {
   foreach ($app in $Apps) {
     $port = Get-AppPort $app
     Write-Host ("  {0,-14} this laptop: http://localhost:{1}" -f $app.Name, $port)
-    if ($ip) { Write-Host ("  {0,-14} your phone:  http://{1}:{2}   (same Wi-Fi)" -f '', $ip, $port) }
+    if ($ip -and -not $app.LaptopOnly) { Write-Host ("  {0,-14} your phone:  http://{1}:{2}   (same Wi-Fi)" -f '', $ip, $port) }
   }
   Write-Host ""
   Write-Host "  Actual Budget only opens over https on other devices: see 'Reaching it from your phone' in README.md."
@@ -166,13 +169,13 @@ function Invoke-Setup {
     Write-Step ".env already exists, keeping your settings"
   }
 
-  Write-Step "Downloading Mealie, Grocy and Actual Budget"
-  Invoke-Compose pull
+  Write-Step "Downloading Mealie, Grocy and Actual Budget, building the bridge"
+  Invoke-Compose pull --ignore-buildable
   Write-Step "Starting them"
-  Invoke-Compose up -d
+  Invoke-Compose up -d --build
 
   if (Wait-AppsUp) {
-    Write-Ok "All three apps are running."
+    Write-Ok "All the apps are running."
     Show-Urls
     Write-Host "First logins (change the passwords right away):"
     Write-Host "  Mealie:        changeme@example.com / MyPassword"
@@ -241,7 +244,7 @@ function Copy-BackupOffLaptop($Dir, $Stamp, [int]$Keep) {
 
 function Invoke-Restore([string]$File) {
   if (-not $File -or -not (Test-Path $File)) {
-    Stop-WithError "Usage: .\mealie.cmd restore <path to a mealie-data_, grocy-data_ or actual-data_ backup>"
+    Stop-WithError "Usage: .\mealie.cmd restore <path to a mealie-data_, grocy-data_, actual-data_ or bridge-data_ backup>"
   }
   Assert-Docker
   $full = (Resolve-Path $File).Path
@@ -249,7 +252,7 @@ function Invoke-Restore([string]$File) {
   $name = Split-Path $full -Leaf
 
   $app = $Apps | Where-Object { $name -like "$($_.Volume)_*.tar.gz" } | Select-Object -First 1
-  if (-not $app) { Stop-WithError "Can't tell which app $name belongs to. Backup files start with mealie-data_, grocy-data_ or actual-data_." }
+  if (-not $app) { Stop-WithError "Can't tell which app $name belongs to. Backup files start with mealie-data_, grocy-data_, actual-data_ or bridge-data_." }
 
   $answer = Read-Host "This replaces ALL current $($app.Name) data with $name. Type YES to continue"
   if ($answer -ne 'YES') { Write-Host "Cancelled. Nothing changed."; return }
@@ -274,8 +277,8 @@ function Invoke-Update {
   Write-Step "Backing up before updating"
   Invoke-Backup
   Write-Step "Downloading the versions set in docker-compose.yml"
-  Invoke-Compose pull
-  Invoke-Compose up -d
+  Invoke-Compose pull --ignore-buildable
+  Invoke-Compose up -d --build
   if (Wait-AppsUp) { Write-Ok "Updated and running." }
   else { Stop-WithError "Not everything is answering after the update. Run '.\mealie.cmd logs'; '.\mealie.cmd restore' can roll back." }
 }
@@ -412,12 +415,12 @@ switch ($Command) {
     Write-Host @'
 Usage:  .\mealie.cmd <command> [argument]
 
-Runs Mealie (recipes), Grocy (pantry) and Actual Budget (money).
+Runs Mealie (recipes), Grocy (pantry), Actual Budget (money) and the bank-sync bridge.
 
   setup            First-time setup: create .env, download the apps, start them
   start | stop | restart
   status           Are they running and answering?
-  logs [app]       Follow the live logs (Ctrl+C to exit); app = mealie, grocy or actual
+  logs [app]       Follow the live logs (Ctrl+C to exit); app = mealie, grocy, actual or bridge
   url              Addresses to open on this laptop and on your phone
   update           Back up, then download and start the versions in docker-compose.yml
   backup           Save a full copy of each app's data to the backup folder

@@ -14,17 +14,18 @@ jobs:
         run: cp .env.example .env
       - name: Validate docker-compose.yml
         run: docker compose config --quiet
-      - name: Start Mealie, Grocy and Actual Budget
-        run: docker compose up -d
-      - name: Wait for all three to answer
+      - name: Start Mealie, Grocy, Actual Budget and the bridge
+        run: docker compose up -d --build
+      - name: Wait for all four to answer
         run: |
           up() {
             curl -fsS -o /dev/null http://localhost:9925/api/app/about &&
             curl -fsSL -o /dev/null http://localhost:9283/ &&
-            curl -fsS -o /dev/null http://localhost:5006/health
+            curl -fsS -o /dev/null http://localhost:5006/health &&
+            curl -fsS -o /dev/null http://localhost:8787/health
           }
           for i in $(seq 1 60); do
-            if up; then echo "All three are up"; exit 0; fi
+            if up; then echo "All four are up"; exit 0; fi
             sleep 3
           done
           docker compose ps
@@ -35,18 +36,19 @@ jobs:
           up() {
             curl -fsS -o /dev/null http://localhost:9925/api/app/about &&
             curl -fsSL -o /dev/null http://localhost:9283/ &&
-            curl -fsS -o /dev/null http://localhost:5006/health
+            curl -fsS -o /dev/null http://localhost:5006/health &&
+            curl -fsS -o /dev/null http://localhost:8787/health
           }
           docker compose stop
           mkdir -p backup
-          for v in mealie-data grocy-data actual-data; do
+          for v in mealie-data grocy-data actual-data bridge-data; do
             docker run --rm -v "$v:/data:ro" -v "$PWD/backup:/backup" alpine tar czf "/backup/$v.tar.gz" -C /data .
             test -s "backup/$v.tar.gz"
             docker run --rm -v "$v:/data" -v "$PWD/backup:/backup:ro" alpine sh -c "find /data -mindepth 1 -delete && tar xzf /backup/$v.tar.gz -C /data"
           done
           docker compose start
           for i in $(seq 1 60); do
-            if up; then echo "All three up after restore"; exit 0; fi
+            if up; then echo "All four up after restore"; exit 0; fi
             sleep 3
           done
           docker compose logs
@@ -54,6 +56,20 @@ jobs:
       - name: Clean up
         if: always()
         run: docker compose down -v
+
+  bridge:
+    name: Bridge builds and its tests pass
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: bridge
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm test
 
   powershell:
     name: PowerShell script passes linting

@@ -53,7 +53,7 @@ services:
       PGID: 1000
       TZ: "${TZ:-America/New_York}"
 
-  # Budget and bank transactions (SimpleFIN bank sync is built in).
+  # Budget and bank transactions (bank sync comes from the bridge below).
   actual:
     image: actualbudget/actual-server:26.10.0
     container_name: actual
@@ -67,6 +67,35 @@ services:
     volumes:
       - actual-data:/data
 
+  # Kitchen bridge, our own code in ./bridge. For now: daily Plaid bank sync
+  # into Actual (ADR-22). Only this laptop can open it (127.0.0.1), because
+  # its page connects bank accounts.
+  bridge:
+    build: ./bridge
+    container_name: bridge
+    restart: always
+    depends_on:
+      - actual
+    ports:
+      - "127.0.0.1:${BRIDGE_PORT:-8787}:8787"
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+    volumes:
+      - bridge-data:/data
+    environment:
+      TZ: "${TZ:-America/New_York}"
+      BANK_SYNC_HOUR: "${BANK_SYNC_HOUR:-6}"
+      PLAID_CLIENT_ID: "${PLAID_CLIENT_ID:-}"
+      PLAID_SECRET: "${PLAID_SECRET:-}"
+      PLAID_ENV: "${PLAID_ENV:-production}"
+      PLAID_REDIRECT_URI: "${PLAID_REDIRECT_URI:-}"
+      ACTUAL_SERVER_URL: http://actual:5006
+      ACTUAL_PASSWORD: "${ACTUAL_PASSWORD:-}"
+      ACTUAL_SYNC_ID: "${ACTUAL_SYNC_ID:-}"
+      ACTUAL_BUDGET_PASSWORD: "${ACTUAL_BUDGET_PASSWORD:-}"
+
 volumes:
   # Fixed names so the backup/restore commands can always find them.
   mealie-data:
@@ -75,3 +104,5 @@ volumes:
     name: grocy-data
   actual-data:
     name: actual-data
+  bridge-data:
+    name: bridge-data
