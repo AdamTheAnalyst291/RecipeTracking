@@ -55,7 +55,7 @@ services:
 
   # Budget and bank transactions (SimpleFIN bank sync is built in).
   actual:
-    image: actualbudget/actual-server:26.10.0
+    image: actualbudget/actual-server:26.11.0
     container_name: actual
     restart: always
     ports:
