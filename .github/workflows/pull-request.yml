@@ -15,12 +15,10 @@ permissions:
 
 jobs:
   check:
-    name: Lint, typecheck and test
+    name: Build, lint, typecheck and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # Turborepo --affected compares against the base branch
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
 
@@ -38,8 +36,6 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # --affected runs only packages changed against the base branch, plus their dependants.
-      - run: pnpm exec turbo run build lint typecheck test --affected
+      - run: pnpm exec turbo run build lint typecheck test
         env:
           TURBO_CACHE_DIR: .turbo/cache
-          TURBO_SCM_BASE: origin/${{ github.base_ref || 'main' }}

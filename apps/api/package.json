@@ -11,11 +11,11 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@azure/functions": "^4.17.1",
+    "@azure/functions": "4.17.1",
     "@kitchen/shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.6.6"
+    "@types/node": "26.6.6"
   },
   "files": [
     "dist",
