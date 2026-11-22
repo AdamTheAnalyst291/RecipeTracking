@@ -1,0 +1,49 @@
+name: Infrastructure
+
+# Terraform checks for infra/. Nothing here signs in to Azure: the bootstrap is applied
+# by hand (infra/README.md). Card F3 adds the Dev plan and apply jobs.
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - infra/**
+      - .github/workflows/infrastructure.yml
+  push:
+    branches: [main]
+    paths:
+      - infra/**
+      - .github/workflows/infrastructure.yml
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TERRAFORM_VERSION: 1.17.2
+
+jobs:
+  check:
+    name: Terraform format, validate and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - run: terraform fmt -check -recursive -diff infra
+
+      - name: Validate every root
+        run: |
+          for dir in infra/bootstrap; do
+            echo "::group::$dir"
+            terraform -chdir="$dir" init -backend=false -lockfile=readonly
+            terraform -chdir="$dir" validate
+            echo "::endgroup::"
+          done
+
+      # Plan-only tests with mocked providers; they need no Azure sign-in.
+      - run: terraform -chdir=infra/bootstrap test

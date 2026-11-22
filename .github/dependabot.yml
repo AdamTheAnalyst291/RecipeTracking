@@ -18,6 +18,10 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+  - package-ecosystem: "terraform"
+    directory: "/infra/bootstrap"
+    schedule:
+      interval: "monthly"
   - package-ecosystem: "npm"
     directory: "/legacy/bridge"
     schedule:
