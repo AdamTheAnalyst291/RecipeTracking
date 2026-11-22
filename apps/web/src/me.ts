@@ -3,7 +3,7 @@ import type { MeResponse } from "@kitchen/shared";
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
 export type Me =
-  | { state: "member"; me: MeResponse }
+  | { state: "member"; profile: MeResponse }
   | { state: "not-a-member" }
   | { state: "signed-out" }
   | { state: "error"; reason: string };
@@ -15,7 +15,7 @@ export async function fetchMe(apiUrl: string, getToken: () => Promise<string>, f
     if (response.status === 401) return { state: "signed-out" };
     if (response.status === 403) return { state: "not-a-member" };
     if (!response.ok) return { state: "error", reason: `HTTP ${response.status}` };
-    return { state: "member", me: (await response.json()) as MeResponse };
+    return { state: "member", profile: (await response.json()) as MeResponse };
   } catch (error) {
     return { state: "error", reason: error instanceof Error ? error.message : "Request failed" };
   }

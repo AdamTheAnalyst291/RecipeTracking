@@ -1,5 +1,5 @@
 import type { HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { createRemoteJWKSet, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
 
 /** A group of people who share one kitchen. There is one household for now, with Adam in it. */
 export interface Household {
@@ -36,6 +36,11 @@ const unauthenticated: HttpResponseInit = {
   jsonBody: { error: "Sign in first." },
 };
 
+const unavailable: HttpResponseInit = {
+  status: 503,
+  jsonBody: { error: "Sign-in can't be checked right now. Try again shortly." },
+};
+
 const forbidden: HttpResponseInit = {
   status: 403,
   jsonBody: { error: "This account isn't a member of the household." },
@@ -54,8 +59,14 @@ export function createAuthenticator(config: AuthConfig, keys: JWTVerifyGetKey): 
         audience: config.clientId,
         algorithms: ["RS256"],
       }));
-    } catch {
-      return { ok: false, response: unauthenticated };
+    } catch (error) {
+      // A token that fails a check is the caller's problem (401). Not reaching Entra's
+      // published keys is ours: say so, rather than sending the user round a sign-in loop.
+      if (error instanceof errors.JOSEError && !(error instanceof errors.JWKSTimeout)) {
+        return { ok: false, response: unauthenticated };
+      }
+      console.error("Could not check the token against Entra's signing keys", error);
+      return { ok: false, response: unavailable };
     }
 
     // A token the web app got for a person carries the delegated scope; an app-only token

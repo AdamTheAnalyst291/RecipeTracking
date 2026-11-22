@@ -9,7 +9,7 @@ describe("fetchMe", () => {
     const body = { name: "Test User", household: { id: "home" } };
     const fetchFn = vi.fn().mockResolvedValue(new Response(JSON.stringify(body), { status: 200 }));
 
-    await expect(fetchMe(api, getToken, fetchFn)).resolves.toEqual({ state: "member", me: body });
+    await expect(fetchMe(api, getToken, fetchFn)).resolves.toEqual({ state: "member", profile: body });
     expect(fetchFn).toHaveBeenCalledWith(`${api}/api/me`, { headers: { Authorization: "Bearer token-123" } });
   });
 

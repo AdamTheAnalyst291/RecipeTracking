@@ -106,36 +106,38 @@ In PowerShell: `az keyvault secret set --vault-name $vault --name plaid-secret -
 
 The web app signs in with Microsoft Entra through MSAL, and every API function except `/api/health` checks the Entra access token the web app sends. A token must come from this tenant, be issued for the environment's app registration with the `access_as_user` scope, and belong to a household member. Anyone else gets 401 (no token or a bad one) or 403 (signed in, but not in the household). Static Web Apps' built-in sign-in isn't used: on the Free plan the API is a separate Functions app that never sees it.
 
-Do these before merging card F4's pull request; until they're done the API refuses every request that needs sign-in with 500. Run them in bash (Git Bash works), signed in to the Azure CLI as the subscription owner. For Prod, repeat with `prod` in place of `dev`.
+Do these before merging card F4's pull request, or just after it. Until they're done, the API refuses every request that needs sign-in with 500, the web app says sign-in isn't set up, and each Dev deploy ends with a warning. Run them in bash (Git Bash works), signed in to the Azure CLI as the subscription owner. For Prod, repeat with `prod` in place of `dev`.
 
-1. Create the app registration `kitchen-dev`: this tenant only, the web app's address and Vite's local server as single-page-app redirect URIs, and an API scope `access_as_user` that issues v2 tokens (the API rejects v1 tokens):
+1. Create the app registration `kitchen-dev`: this tenant only, the web app's address and Vite's local server as single-page-app redirect URIs, and an API scope `access_as_user` that issues v2 tokens (the API rejects v1 tokens).
 
-   ```bash
-   web=$(az staticwebapp list -g rg-kitchen-dev --query "[0].defaultHostname" -o tsv)
-   app=$(az ad app create --display-name kitchen-dev --sign-in-audience AzureADMyOrg --query appId -o tsv)
-   obj=$(az ad app show --id "$app" --query id -o tsv)
-   scope=$(powershell -NoProfile -Command '[guid]::NewGuid().ToString()' | tr -d '\r')
-   cat > kitchen-app.json <<EOF
-   {
-     "identifierUris": ["api://$app"],
-     "spa": { "redirectUris": ["https://$web/", "http://localhost:5173/"] },
-     "api": {
-       "requestedAccessTokenVersion": 2,
-       "oauth2PermissionScopes": [{
-         "id": "$scope", "value": "access_as_user", "type": "User", "isEnabled": true,
-         "adminConsentDisplayName": "Use the kitchen app",
-         "adminConsentDescription": "Lets the kitchen web app call the kitchen API as you.",
-         "userConsentDisplayName": "Use the kitchen app",
-         "userConsentDescription": "Lets the kitchen web app call the kitchen API as you."
-       }]
-     }
-   }
-   EOF
-   az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$obj" \
-     --headers Content-Type=application/json --body @kitchen-app.json
-   rm kitchen-app.json
-   az ad sp create --id "$app"
-   ```
+   Copy this block as it is (the heredoc's closing `EOF` must start its line):
+
+```bash
+web=$(az staticwebapp list -g rg-kitchen-dev --query "[0].defaultHostname" -o tsv)
+app=$(az ad app create --display-name kitchen-dev --sign-in-audience AzureADMyOrg --query appId -o tsv)
+obj=$(az ad app show --id "$app" --query id -o tsv)
+scope=$(powershell -NoProfile -Command '[guid]::NewGuid().ToString()' | tr -d '\r')
+cat > kitchen-app.json <<EOF
+{
+  "identifierUris": ["api://$app"],
+  "spa": { "redirectUris": ["https://$web/", "http://localhost:5173/"] },
+  "api": {
+    "requestedAccessTokenVersion": 2,
+    "oauth2PermissionScopes": [{
+      "id": "$scope", "value": "access_as_user", "type": "User", "isEnabled": true,
+      "adminConsentDisplayName": "Use the kitchen app",
+      "adminConsentDescription": "Lets the kitchen web app call the kitchen API as you.",
+      "userConsentDisplayName": "Use the kitchen app",
+      "userConsentDescription": "Lets the kitchen web app call the kitchen API as you."
+    }]
+  }
+}
+EOF
+az rest --method PATCH --uri "https://graph.microsoft.com/v1.0/applications/$obj" \
+  --headers Content-Type=application/json --body @kitchen-app.json
+rm kitchen-app.json
+az ad sp create --id "$app"
+```
 
    Leave `http://localhost:5173/` out for Prod. In the portal instead: **Entra ID**, **App registrations**, **New registration** (this directory only; platform **Single-page application** with both redirect URIs). Then **Expose an API**: set the Application ID URI to `api://<client id>` and add the scope `access_as_user` (admins and users can consent). Then in **Manifest**, set `requestedAccessTokenVersion` to `2`.
 

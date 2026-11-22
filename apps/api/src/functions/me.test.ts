@@ -1,7 +1,7 @@
 import { InvocationContext } from "@azure/functions";
 import { describe, expect, it } from "vitest";
-import { withAuth } from "../auth.js";
-import { request, SOMEONE_ELSE, testAuthenticator, token } from "../test/identity.js";
+import { createAuthenticator, withAuth } from "../auth.js";
+import { request, SOMEONE_ELSE, testAuthenticator, testConfig, token } from "../test/identity.js";
 import { meHandler } from "./me.js";
 
 const me = withAuth(meHandler, () => testAuthenticator);
@@ -38,6 +38,15 @@ describe("GET /api/me", () => {
     const response = await me(request(await authorization()), new InvocationContext());
 
     expect(response.status).toBe(401);
+  });
+
+  it("answers 503, not 401, when Entra's signing keys can't be fetched", async () => {
+    const offline = createAuthenticator(testConfig, async () => {
+      throw new TypeError("fetch failed");
+    });
+    const response = await withAuth(meHandler, () => offline)(request(`Bearer ${await token()}`), new InvocationContext());
+
+    expect(response.status).toBe(503);
   });
 
   it("refuses an app-only token for Adam's object ID with 403, since it wasn't issued to a person", async () => {

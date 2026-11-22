@@ -19,6 +19,11 @@ export function App() {
     const reason = (error: unknown) => (error instanceof Error ? error.message : "Could not load configuration");
 
     loadConfig()
+      .catch((error: unknown) => {
+        // Without config.json neither the API nor sign-in can be reached.
+        if (!cancelled) setHealth({ state: "down", reason: reason(error) });
+        throw error;
+      })
       .then(async (config) => {
         void checkApiHealth(config.apiUrl).then((result) => !cancelled && setHealth(result));
         if (!config.auth) return { state: "not-configured" } as const;
@@ -26,10 +31,7 @@ export function App() {
         if (!signIn.account) return { state: "signed-out", signIn } as const;
         return { state: "signed-in", signIn, me: await fetchMe(config.apiUrl, signIn.getToken) } as const;
       })
-      .catch((error: unknown): Session => {
-        if (!cancelled) setHealth({ state: "down", reason: reason(error) });
-        return { state: "failed", reason: reason(error) };
-      })
+      .catch((error: unknown): Session => ({ state: "failed", reason: reason(error) }))
       .then((result) => {
         if (!cancelled) setSession(result);
       });
@@ -75,7 +77,7 @@ function SessionView({ session }: { session: Session }) {
       if (me.state === "member") {
         return (
           <p>
-            Signed in as {me.me.name ?? session.signIn.account?.username} (household {me.me.household.id}). {signOut}
+            Signed in as {me.profile.name ?? session.signIn.account?.username} (household {me.profile.household.id}). {signOut}
           </p>
         );
       }
