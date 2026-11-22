@@ -8,6 +8,9 @@ jobs:
   compose:
     name: Compose file is valid and all apps start
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: legacy
     steps:
       - uses: actions/checkout@v7
       - name: Use example settings
@@ -76,7 +79,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: bridge
+        working-directory: legacy/bridge
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v4
@@ -94,12 +97,19 @@ jobs:
         shell: pwsh
         run: |
           $errors = $null
-          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\mealie.ps1", [ref]$null, [ref]$errors) | Out-Null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\legacy\mealie.ps1", [ref]$null, [ref]$errors) | Out-Null
           if ($errors) { $errors | Format-List; exit 1 }
           Install-Module PSScriptAnalyzer -Force -Scope CurrentUser
-          $issues = Invoke-ScriptAnalyzer -Path .\mealie.ps1 -Severity Error
+          $issues = Invoke-ScriptAnalyzer -Path .\legacy\mealie.ps1 -Severity Error
           if ($issues) { $issues | Format-Table -AutoSize; exit 1 }
           Write-Host "mealie.ps1 OK"
       - name: Help command runs
         shell: cmd
-        run: mealie.cmd help
+        run: legacy\mealie.cmd help
+      - name: A .env left at the repo root moves into legacy
+        shell: pwsh
+        run: |
+          Set-Content -Path .env -Value 'MEALIE_PORT=1234'
+          legacy\mealie.cmd help | Out-Null
+          if (Test-Path .env) { throw '.env was not moved' }
+          if ((Get-Content legacy\.env) -ne 'MEALIE_PORT=1234') { throw 'legacy\.env has the wrong content' }
