@@ -2,23 +2,30 @@
 version: 2
 updates:
   - package-ecosystem: "docker-compose"
-    directory: "/"
+    directory: "/legacy"
     schedule:
       interval: "weekly"
     commit-message:
       prefix: "mealie"
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      kitchen:
+        patterns: ["*"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "monthly"
   - package-ecosystem: "npm"
-    directory: "/bridge"
+    directory: "/legacy/bridge"
     schedule:
       interval: "weekly"
     commit-message:
       prefix: "bridge"
   - package-ecosystem: "docker"
-    directory: "/bridge"
+    directory: "/legacy/bridge"
     schedule:
       interval: "monthly"
     commit-message:
