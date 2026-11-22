@@ -1,5 +1,5 @@
 # Kitchen bridge (ADR-18): TypeScript on Node in one container.
-FROM node:22.22.0-bookworm-slim AS build
+FROM node:26.13.1-bookworm-slim AS build
 WORKDIR /app
 # better-sqlite3 (used by Actual's API) compiles from source when no prebuilt
 # binary matches this Node version, so the build stage needs a C++ toolchain.
@@ -11,7 +11,7 @@ COPY tsconfig.json ./
 COPY src ./src
 RUN npx tsc && npm prune --omit=dev
 
-FROM node:22.22.0-bookworm-slim
+FROM node:26.13.1-bookworm-slim
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
