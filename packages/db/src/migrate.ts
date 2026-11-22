@@ -19,7 +19,9 @@ export function listMigrations(dir: string = migrationsDir): Migration[] {
     .sort()
     .map((name) => {
       const text = readFileSync(`${dir}/${name}`, "utf8");
-      return { name, sql: text, checksum: createHash("sha256").update(text).digest("hex") };
+      // Hash with LF line endings, so a Windows checkout (CRLF) and CI (LF) agree.
+      const checksum = createHash("sha256").update(text.replaceAll("\r\n", "\n")).digest("hex");
+      return { name, sql: text, checksum };
     });
 }
 
