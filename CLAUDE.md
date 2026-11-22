@@ -1,8 +1,8 @@
 # Notes for Claude
 
-- Runs on Adam's Windows laptop with Docker Desktop: Mealie (recipes), Grocy (pantry), Actual Budget (money). Users run `.\mealie.cmd <command>`; all logic is in `mealie.ps1` (keep it Windows PowerShell 5.1 compatible). The `$Apps` table there lists each app's service, volume, port and health URL.
+- Runs on Adam's Windows laptop with Docker Desktop: Mealie (recipes), Grocy (pantry), Actual Budget (money), plus our own kitchen bridge in `bridge/` (TypeScript/Node; for now Plaid bank sync into Actual, ADR-22). Users run `.\mealie.cmd <command>`; all logic is in `mealie.ps1` (keep it Windows PowerShell 5.1 compatible). The `$Apps` table there lists each app's service, volume, port and health URL.
 - Image versions are pinned in `docker-compose.yml`; Dependabot bumps them. Don't switch to `latest`.
-- Data lives in the Docker volumes `mealie-data`, `grocy-data`, `actual-data` (fixed names; backup/restore depend on them). All SQLite, not Postgres.
+- Data lives in the Docker volumes `mealie-data`, `grocy-data`, `actual-data`, `bridge-data` (fixed names; backup/restore depend on them). All SQLite, not Postgres.
 - Bigger plan (meal plan → pantry → budget loop, kitchen bridge, MCP connector): Trello board "Personal Finance & Meal Planning System".
 - Never commit `.env` or secrets.
 - Tasks: Trello board "Home Lab". Docs: Notion page "Home Server". Update both when something changes.

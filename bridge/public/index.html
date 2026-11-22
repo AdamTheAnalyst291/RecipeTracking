@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bank sync</title>
+  <script src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"></script>
+  <style>
+    body { font: 16px/1.5 system-ui, sans-serif; max-width: 680px; margin: 2rem auto; padding: 0 16px; color: #1f2328; background: #fff; }
+    h1 { font-size: 1.5rem; }
+    .card { border: 1px solid #d0d7de; border-radius: 8px; padding: 12px 16px; margin: 12px 0; }
+    .warn { background: #fff8c5; border-color: #d4a72c; }
+    .bad { background: #ffebe9; border-color: #ff8182; }
+    button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid #1f6feb; background: #1f6feb; color: #fff; cursor: pointer; }
+    button.secondary { background: #fff; color: #1f6feb; }
+    select { font: inherit; padding: 4px; max-width: 100%; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 6px 0; }
+    small { color: #59636e; }
+  </style>
+</head>
+<body>
+  <h1>Bank sync</h1>
+  <p><small>Connect a bank through Plaid once. New posted transactions are imported into Actual Budget every morning.</small></p>
+  <div id="app">Loading…</div>
+
+<script>
+const post = (path, body) =>
+  fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Bridge': '1' }, body: JSON.stringify(body || {}) })
+    .then(async (r) => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.statusText); return j; });
+
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+async function render() {
+  const app = document.getElementById('app');
+  const s = await fetch('/api/status').then((r) => r.json());
+  let html = '';
+
+  if (s.missing.length) {
+    html += `<div class="card warn">Add these to <code>.env</code>, then run <code>.\\mealie.cmd restart</code>: <b>${s.missing.map(esc).join(', ')}</b></div>`;
+  }
+  if (s.actualError) html += `<div class="card bad">Can't open the Actual budget: ${esc(s.actualError)}</div>`;
+
+  const options = (selected) =>
+    `<option value="">Choose…</option><option value="skip"${selected === 'skip' ? ' selected' : ''}>Don't import</option>` +
+    s.actualAccounts.map((a) => `<option value="${esc(a.id)}"${a.id === selected ? ' selected' : ''}>${esc(a.name)}</option>`).join('');
+
+  for (const item of s.items) {
+    html += `<div class="card"><b>${esc(item.institution)}</b>`;
+    for (const a of item.accounts) {
+      html += `<div class="row"><span>${esc(a.name)}${a.mask ? ' ••' + esc(a.mask) : ''}</span>
+        <select data-item="${esc(item.itemId)}" data-account="${esc(a.plaidAccountId)}">${options(a.actualAccountId)}</select></div>`;
+    }
+    html += `<small>Pick the Actual account each one goes into. Make a new, empty account in Actual first so nothing is doubled.</small>
+      <p><button class="secondary" data-reconnect="${esc(item.itemId)}">Reconnect</button> <small>if the bank asks you to log in again</small></p></div>`;
+  }
+
+  if (s.lastRun) {
+    const r = s.lastRun;
+    html += `<div class="card ${r.ok ? '' : 'bad'}">Last sync ${esc(new Date(r.at).toLocaleString())}: ${r.imported} new, ${r.updated} updated. ${esc(r.message)}</div>`;
+  }
+
+  if (!s.missing.length) {
+    html += `<p><button id="connect">Connect a bank</button> <button id="sync" class="secondary">Sync now</button></p>`;
+  }
+  app.innerHTML = html;
+
+  app.querySelectorAll('select').forEach((el) => el.addEventListener('change', () =>
+    post('/api/map', { itemId: el.dataset.item, plaidAccountId: el.dataset.account, actualAccountId: el.value || null }).catch(alertError)));
+  document.getElementById('connect')?.addEventListener('click', () => connect());
+  app.querySelectorAll('[data-reconnect]').forEach((el) => el.addEventListener('click', () => connect(el.dataset.reconnect)));
+  document.getElementById('sync')?.addEventListener('click', async (e) => {
+    e.target.disabled = true; e.target.textContent = 'Syncing…';
+    await post('/api/sync').catch(alertError);
+    render();
+  });
+}
+
+function alertError(err) {
+  document.getElementById('app').insertAdjacentHTML('afterbegin', `<div class="card bad">${esc(err.message)}</div>`);
+}
+
+// With itemId, Link repairs that connection (update mode); nothing to exchange after.
+async function connect(itemId) {
+  try {
+    const { linkToken } = await post('/api/link-token', { itemId });
+    Plaid.create({
+      token: linkToken,
+      onSuccess: async (publicToken, metadata) => {
+        if (!itemId) await post('/api/exchange', { publicToken, institution: metadata.institution?.name }).catch(alertError);
+        render();
+      },
+      onExit: (err) => { if (err) alertError(new Error(err.display_message || err.error_message || err.error_code)); },
+    }).open();
+  } catch (err) { alertError(err); }
+}
+
+render().catch(alertError);
+</script>
+</body>
+</html>

@@ -1,4 +1,4 @@
-# Opens a pull request when a new Mealie image or GitHub Action version is out.
+# Opens a pull request when a new app image, bridge package or GitHub Action version is out.
 version: 2
 updates:
   - package-ecosystem: "docker-compose"
@@ -11,3 +11,15 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+  - package-ecosystem: "npm"
+    directory: "/bridge"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "bridge"
+  - package-ecosystem: "docker"
+    directory: "/bridge"
+    schedule:
+      interval: "monthly"
+    commit-message:
+      prefix: "bridge"
