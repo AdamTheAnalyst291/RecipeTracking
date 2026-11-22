@@ -44,7 +44,8 @@ permissions:
   contents: read
 
 concurrency:
-  # Deploys queue one after another; a pull request's dry run is replaced by its next push.
+  # One deploy at a time. A deploy waiting behind a running one is replaced by a newer
+  # merge, so Dev ends on the latest main. A pull request's dry run is replaced by its next push.
   group: ${{ github.event_name == 'pull_request' && format('deploy-dev-pr-{0}', github.event.pull_request.number) || 'deploy-dev' }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
@@ -58,7 +59,7 @@ jobs:
     name: Build once
     runs-on: ubuntu-latest
     outputs:
-      artifact: ${{ steps.name.outputs.artifact }}
+      artifact: ${{ steps.artifact.outputs.name }}
     steps:
       - uses: actions/checkout@v7
 
@@ -97,13 +98,13 @@ jobs:
           done
           echo "Packages look complete: api.zip is $(du -h build/api.zip | cut -f1)"
 
-      - id: name
-        run: echo "artifact=kitchen-build-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      - id: artifact
+        run: echo "name=kitchen-build-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v7
         if: github.event_name != 'pull_request'
         with:
-          name: ${{ steps.name.outputs.artifact }}
+          name: ${{ steps.artifact.outputs.name }}
           path: |
             build/api.zip
             build/web
@@ -128,10 +129,10 @@ jobs:
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_deploy_identity_object_id: ${{ vars.AZURE_PRINCIPAL_ID }}
     outputs:
-      static_web_app_name: ${{ steps.outputs.outputs.static_web_app_name }}
-      function_app_name: ${{ steps.outputs.outputs.function_app_name }}
-      web_url: ${{ steps.outputs.outputs.web_url }}
-      api_url: ${{ steps.outputs.outputs.api_url }}
+      static_web_app_name: ${{ steps.tf.outputs.static_web_app_name }}
+      function_app_name: ${{ steps.tf.outputs.function_app_name }}
+      web_url: ${{ steps.tf.outputs.web_url }}
+      api_url: ${{ steps.tf.outputs.api_url }}
     defaults:
       run:
         working-directory: infra/environments/dev
@@ -168,7 +169,7 @@ jobs:
 
       # Names and addresses only; nothing here is secret.
       - name: Read the outputs
-        id: outputs
+        id: tf
         run: |
           set -euo pipefail
           for name in static_web_app_name function_app_name web_url api_url; do

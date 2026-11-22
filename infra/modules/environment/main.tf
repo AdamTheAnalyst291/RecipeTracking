@@ -90,6 +90,8 @@ resource "azurerm_function_app_flex_consumption" "api" {
   app_settings = {
     AzureWebJobsStorage__accountName = azurerm_storage_account.functions.name
     KITCHEN_ENVIRONMENT              = var.environment
+    # Where the API reads its secrets (Plaid and others), with its managed identity.
+    KITCHEN_KEY_VAULT_URI = azurerm_key_vault.this.vault_uri
   }
 
   site_config {

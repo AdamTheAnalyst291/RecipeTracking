@@ -77,7 +77,7 @@ Set `environments = ["dev", "uat", "prod"]` in `terraform.tfvars`, apply again, 
 
 - **Web app:** a Static Web App on the Free plan.
 - **API:** a Linux Functions app on Flex Consumption (Node 24) with a system-assigned managed identity. It reaches its own storage account (deployment package and host state) with that identity, not a key, and allows calls from the web app's address (plus `http://localhost:5173` in Dev).
-- **Key Vault** with Azure RBAC. The API's identity has Key Vault Secrets User, so it can read secrets and nothing else. Terraform never sees secret values.
+- **Key Vault** with Azure RBAC. The API's identity has Key Vault Secrets User, so it can read secrets and nothing else, and finds the vault through its `KITCHEN_KEY_VAULT_URI` app setting. Terraform never sees secret values.
 - **Azure SQL:** a server that accepts Microsoft Entra sign-in only, with the environment's deploy identity (`kitchen-github-<env>`) as its admin so the pipeline can run migrations, and a firewall that lets in Azure services only. Its database uses the free offer and pauses for the rest of the month instead of billing when the free allowance runs out.
 
 Names carry a suffix derived from the subscription, environment and region, so they stay the same from run to run. The Deploy Dev run's summary lists them.

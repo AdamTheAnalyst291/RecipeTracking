@@ -82,6 +82,11 @@ run "api_can_read_key_vault_secrets" {
   }
 
   assert {
+    condition     = contains(keys(azurerm_function_app_flex_consumption.api.app_settings), "KITCHEN_KEY_VAULT_URI")
+    error_message = "The API must be told which Key Vault holds its secrets."
+  }
+
+  assert {
     condition     = azurerm_key_vault.this.rbac_authorization_enabled
     error_message = "Key Vault access must use Azure RBAC."
   }

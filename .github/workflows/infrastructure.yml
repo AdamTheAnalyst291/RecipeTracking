@@ -57,13 +57,16 @@ jobs:
   plan-dev:
     name: Plan Dev
     needs: check
-    # Same-repository pull requests only; see the note at the top.
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    # Same-repository pull requests only; see the note at the top. Dependabot's runs get
+    # no OIDC token, so its pull requests are planned by the apply after merge instead.
+    # No concurrency group: a pending plan in the apply's group would cancel a pending
+    # apply. Terraform's state lock (-lock-timeout) keeps a plan and an apply apart.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     environment: dev
-    concurrency:
-      group: terraform-dev
-      cancel-in-progress: false
     permissions:
       contents: read
       id-token: write # OIDC sign-in to Azure
