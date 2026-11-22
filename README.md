@@ -44,6 +44,7 @@ Self-hosted kitchen apps running on a Windows laptop with Docker Desktop:
 | `.\mealie.cmd restore <file>` | Replace one app's data with a backup; the file name says which app (backs up current data first) |
 | `.\mealie.cmd update` | Back up, then run the versions in `docker-compose.yml` |
 | `.\mealie.cmd audit` | Check every Mealie recipe for data problems (see below) |
+| `.\mealie.cmd staples` | Add the pantry staples in `grocy\staples.csv` to Grocy (see below) |
 
 ## Recipe audit
 
@@ -52,6 +53,16 @@ Self-hosted kitchen apps running on a Windows laptop with Docker Desktop:
 It needs a Mealie API token: in Mealie open your profile > API Tokens, then in PowerShell run `[Environment]::SetEnvironmentVariable('MEALIE_API_TOKEN', '<token>', 'User')`. The token stays on the laptop, never in this repo.
 
 When entering a recipe, use foods already in Mealie's list (it suggests them as you type), put clove/bunch/can in the unit box, and check the diet tags against the ingredients.
+
+## Pantry staples in Grocy
+
+Grocy tracks only the staples you buy most (about 50), not every jar in the kitchen; anything not tracked is treated as "assume we need it" on the shopping list. The list lives in `grocy/staples.csv`, one row per product:
+
+- **Unit** is how you buy and count it (jar, bottle, can, head), not the recipe unit.
+- **Min stock**: Grocy flags the product for the shopping list when you have less than this.
+- **Have now**: what's in the kitchen today. `staples` sets Grocy's stock to this number; leave it blank to skip.
+
+`.\mealie.cmd staples` creates any missing locations, units, product groups and products, matching by name, then applies the Have now counts. It never changes products that already exist, so it's safe to run again after adding rows. It needs a Grocy API key: in Grocy open the user menu (top right) > Manage API keys > Add, then run `[Environment]::SetEnvironmentVariable('GROCY_API_KEY', '<key>', 'User')` and open a new terminal.
 
 ## Updating
 

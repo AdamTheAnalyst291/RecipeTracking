@@ -19,13 +19,14 @@
   restore <file>   Replace ALL of one app's data with a backup file
   schedule-backup  Add weekly backup (Sundays 3am) and recipe audit (3:30am) tasks to Task Scheduler
   audit            Check every recipe for missing steps, unit words in notes and diet tags that clash
+  staples [file]   Add the pantry staples in grocy\staples.csv to Grocy (safe to run again)
   power            Keep the laptop awake while plugged in (lid close does nothing)
   help             Show this list
 #>
 param(
   [Parameter(Position = 0)]
   [ValidateSet('setup', 'start', 'stop', 'restart', 'status', 'logs', 'url', 'update',
-               'backup', 'restore', 'schedule-backup', 'audit', 'power', 'help')]
+               'backup', 'restore', 'schedule-backup', 'audit', 'staples', 'power', 'help')]
   [string]$Command = 'help',
 
   [Parameter(Position = 1)]
@@ -384,6 +385,92 @@ function Invoke-Audit {
   else { Write-Ok "No problems in $($list.Count) recipes. Report: $report" }
 }
 
+function Get-GrocyKey {
+  $key = $env:GROCY_API_KEY
+  if (-not $key) { $key = [Environment]::GetEnvironmentVariable('GROCY_API_KEY', 'User') }
+  if (-not $key) {
+    Stop-WithError "Set an API key first: in Grocy open the user menu (top right) > Manage API keys > Add, then run`n  [Environment]::SetEnvironmentVariable('GROCY_API_KEY', '<key>', 'User')"
+  }
+  return $key
+}
+
+# Staples only (ADR-11): grocy\staples.csv lists the products Grocy tracks. Products,
+# locations, units and groups are matched by name and only created when missing, so
+# running this again is safe and never undoes changes made in Grocy. "Have now" sets
+# the amount in stock (a stock count, not an addition); leave it blank to skip.
+function Invoke-Staples {
+  $grocy = $Apps | Where-Object { $_.Service -eq 'grocy' }
+  if (-not (Test-AppUp $grocy)) { Stop-WithError "Grocy isn't answering on port $(Get-AppPort $grocy). Run '.\mealie.cmd start'." }
+  $file = if ($Arg) { $Arg } else { Join-Path $Root 'grocy\staples.csv' }
+  if (-not (Test-Path $file)) { Stop-WithError "Can't find $file." }
+  $rows = @(Import-Csv $file | Where-Object { $_.Product })
+  $headers = @{ 'GROCY-API-KEY' = (Get-GrocyKey) }
+  $api = "http://localhost:$(Get-AppPort $grocy)/api"
+
+  function Send-Grocy([string]$Path, $Body) {
+    # UTF-8 bytes, because Grocy rejects a charset in the Content-Type header.
+    $json = [Text.Encoding]::UTF8.GetBytes(($Body | ConvertTo-Json -Compress))
+    try { Invoke-RestMethod -Method Post -Uri "$api/$Path" -Headers $headers -Body $json -ContentType 'application/json' -ErrorAction Stop }
+    catch { Stop-WithError "Grocy refused POST $Path`: $($_.ErrorDetails.Message -replace '(?s),\s*"error_details".*', '}')" }
+  }
+  # Windows PowerShell 5.1 returns a JSON array as one object; foreach over a variable unrolls it.
+  function Get-Grocy([string]$Path) { $list = Invoke-RestMethod -Uri "$api/$Path" -Headers $headers; foreach ($o in $list) { $o } }
+  # name -> id for one Grocy table, creating any names in $Wanted that are missing.
+  function Get-GrocyIds([string]$Entity, $Wanted, [scriptblock]$NewBody) {
+    $ids = @{}
+    foreach ($o in Get-Grocy "objects/$Entity") { $ids[$o.name.ToLower()] = $o.id }
+    foreach ($name in $Wanted | Sort-Object -Unique) {
+      if (-not $ids.ContainsKey($name.ToLower())) {
+        $ids[$name.ToLower()] = (Send-Grocy "objects/$Entity" (& $NewBody $name)).created_object_id
+        Write-Host "  + $Entity`: $name"
+      }
+    }
+    return $ids
+  }
+
+  Write-Step "Checking locations, units and groups"
+  $locations = Get-GrocyIds 'locations' ($rows | ForEach-Object { $_.Location }) { param($n) @{ name = $n; is_freezer = [int]($n -match 'freezer') } }
+  $units = Get-GrocyIds 'quantity_units' ($rows | ForEach-Object { $_.Unit }) {
+    param($n)
+    $plural = if ($n -match '(s|sh|ch|x)$') { "$($n)es" } else { "$($n)s" }
+    @{ name = $n; name_plural = $plural }
+  }
+  $groups = Get-GrocyIds 'product_groups' ($rows | ForEach-Object { $_.Group }) { param($n) @{ name = $n } }
+
+  Write-Step "Adding $($rows.Count) staples"
+  $products = @{}
+  foreach ($o in Get-Grocy 'objects/products') { $products[$o.name.ToLower()] = $o.id }
+  $inStock = @{}
+  foreach ($s in Get-Grocy 'stock') { $inStock[[string]$s.product_id] = [double]$s.amount }
+  $created = 0; $counted = 0
+  foreach ($r in $rows) {
+    $id = $products[$r.Product.ToLower()]
+    if (-not $id) {
+      $unit = $units[$r.Unit.ToLower()]
+      $id = (Send-Grocy 'objects/products' @{
+        name = $r.Product; description = $r.Note
+        location_id = $locations[$r.Location.ToLower()]; product_group_id = $groups[$r.Group.ToLower()]
+        qu_id_purchase = $unit; qu_id_stock = $unit; qu_id_consume = $unit; qu_id_price = $unit
+        min_stock_amount = [double]$r.'Min stock'
+        default_best_before_days = -1   # staples never "expire"; we only care whether there's enough
+      }).created_object_id
+      $products[$r.Product.ToLower()] = $id
+      $created++
+      Write-Host "  + $($r.Product) (min $($r.'Min stock') $($r.Unit), $($r.Location))"
+    }
+    $have = "$($r.'Have now')".Trim()
+    # Grocy refuses a count that matches what it already has, so skip those.
+    if ($have -ne '' -and [double]$have -ne [double]$inStock[[string]$id]) {
+      Send-Grocy "stock/products/$id/inventory" @{ new_amount = [double]$have } | Out-Null
+      $counted++
+    }
+  }
+
+  $missing = @((Invoke-RestMethod -Uri "$api/stock/volatile" -Headers $headers).missing_products)
+  Write-Ok "$created new staples, $($rows.Count - $created) already in Grocy, $counted stock counts set."
+  if ($missing.Count) { Write-Host "Below minimum (shopping list candidates): $(($missing | ForEach-Object { $_.name }) -join ', ')" -ForegroundColor Yellow }
+}
+
 function Invoke-Power {
   Write-Step "Plugged in: never sleep or hibernate; closing the lid does nothing. On battery stays as it was."
   powercfg /change standby-timeout-ac 0
@@ -410,6 +497,7 @@ switch ($Command) {
   'restore'         { Invoke-Restore $Arg }
   'schedule-backup' { Invoke-ScheduleBackup }
   'audit'           { Invoke-Audit }
+  'staples'         { Invoke-Staples }
   'power'           { Invoke-Power }
   default {
     Write-Host @'
@@ -427,6 +515,7 @@ Runs Mealie (recipes), Grocy (pantry), Actual Budget (money) and the bank-sync b
   restore <file>   Replace ALL of one app's data with a backup file
   schedule-backup  Weekly backup (Sundays 3am) and recipe audit (3:30am) in Task Scheduler
   audit            Check recipes for data problems; report goes to the backup folder
+  staples [file]   Add the pantry staples in grocy\staples.csv to Grocy
   power            Keep the laptop awake while plugged in
 '@
   }

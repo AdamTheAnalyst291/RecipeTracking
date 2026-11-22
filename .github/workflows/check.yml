@@ -31,6 +31,20 @@ jobs:
           docker compose ps
           docker compose logs
           exit 1
+      - name: Staples load into Grocy, and a second run changes nothing
+        run: |
+          jar=$(mktemp)
+          curl -fsS -o /dev/null -b "$jar" -c "$jar" -d 'username=admin&password=admin' http://localhost:9283/login
+          curl -fsSL -o /dev/null -b "$jar" -c "$jar" http://localhost:9283/manageapikeys/new
+          export GROCY_API_KEY=$(curl -fsS -b "$jar" http://localhost:9283/manageapikeys | grep -oE '\b[a-f0-9]{48}\b' | head -1)
+          test -n "$GROCY_API_KEY"
+          pwsh -NoProfile -File mealie.ps1 staples grocy/staples.csv
+          pwsh -NoProfile -File mealie.ps1 staples grocy/staples.csv | tee second-run.txt
+          grep -q '^0 new staples' second-run.txt
+          rows=$(($(grep -c . grocy/staples.csv) - 1))
+          products=$(curl -fsS -H "GROCY-API-KEY: $GROCY_API_KEY" http://localhost:9283/api/objects/products | jq length)
+          echo "$rows rows, $products products"
+          test "$rows" -eq "$products"
       - name: Back up and restore round trip, each app
         run: |
           up() {
