@@ -9,6 +9,12 @@ import sql from "mssql";
  */
 export const testServer = process.env.KITCHEN_TEST_SQL;
 
+// Locally the database tests skip without a server. In CI a missing server must fail,
+// or the suite would pass green without proving anything.
+if (!testServer && process.env.CI) {
+  throw new Error("KITCHEN_TEST_SQL is not set in CI, so the database tests would silently skip");
+}
+
 export async function createEmptyDatabase(): Promise<{
   pool: sql.ConnectionPool;
   drop: () => Promise<void>;
@@ -17,7 +23,7 @@ export async function createEmptyDatabase(): Promise<{
   const name = `kitchen_test_${randomUUID().replaceAll("-", "")}`;
   const admin = await new sql.ConnectionPool(testServer).connect();
   await admin.request().batch(`CREATE DATABASE [${name}]`);
-  const pool = await new sql.ConnectionPool(`${testServer};Database=${name}`).connect();
+  const pool = await new sql.ConnectionPool(`${testServer};Database=${name};Request Timeout=0`).connect();
   return {
     pool,
     drop: async () => {
