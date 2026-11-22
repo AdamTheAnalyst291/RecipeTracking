@@ -49,7 +49,7 @@ Run this from a machine signed in to the Azure CLI as an Owner of My-VibeCode. I
 
    This sets the repository variables `TF_STATE_RESOURCE_GROUP` and `TF_STATE_STORAGE_ACCOUNT`, and on each environment `AZURE_CLIENT_ID`, `AZURE_PRINCIPAL_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID`. It creates an environment only if it's missing, so rerunning it leaves protection rules alone.
 
-5. Make Prod wait for you: in GitHub, **Settings → Environments → prod**, tick **Required reviewers**, add yourself and save. Every Prod deploy then waits for your approval. (Required reviewers on a private repository need a paid GitHub plan; if the box isn't offered, tell the parent session before F3's Prod deploy is built.)
+5. Make Prod wait for you: in GitHub, **Settings → Environments → prod**, tick **Required reviewers**, add yourself and save. Every Prod deploy then waits for your approval. (GitHub offers required reviewers on private repositories only on some plans; if the box isn't offered, note it on card F3 before the Prod deploy is built.)
 
 6. Move Setlist's budget off the whole subscription (see below).
 

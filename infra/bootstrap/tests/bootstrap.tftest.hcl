@@ -41,6 +41,11 @@ run "state_has_one_container_per_environment_and_no_account_keys" {
   }
 
   assert {
+    condition     = azurerm_resource_group.state.location == "centralus" && azurerm_storage_account.state.location == "centralus"
+    error_message = "State lives in centralus with the rest of the kitchen."
+  }
+
+  assert {
     condition     = startswith(azurerm_storage_account.state.name, "stkitchentf") && length(azurerm_storage_account.state.name) <= 24
     error_message = "The state account must be stkitchentf<suffix> and fit Azure's 24-character limit."
   }

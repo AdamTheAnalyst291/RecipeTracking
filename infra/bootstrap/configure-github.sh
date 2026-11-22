@@ -12,17 +12,17 @@ cd "$(dirname "$0")"
 repo="${GITHUB_REPOSITORY:-AdamTheAnalyst291/RecipeTracking}"
 
 out="$(terraform output -json)"
-value() { node -e 'const o=JSON.parse(process.argv[1]); console.log(process.argv[2].split(".").reduce((v,k)=>v[k],o).value ?? "")' "$out" "$1"; }
+tf_output() { node -e 'const o=JSON.parse(process.argv[1]); console.log(process.argv[2].split(".").reduce((v,k)=>v[k],o).value ?? "")' "$out" "$1"; }
 
-subscription_id="$(value subscription_id)"
-tenant_id="$(value tenant_id)"
+subscription_id="$(tf_output subscription_id)"
+tenant_id="$(tf_output tenant_id)"
 
 echo "Repository variables for Terraform state"
-gh variable set TF_STATE_RESOURCE_GROUP --repo "$repo" --body "$(value state_resource_group)"
-gh variable set TF_STATE_STORAGE_ACCOUNT --repo "$repo" --body "$(value state_storage_account)"
+gh variable set TF_STATE_RESOURCE_GROUP --repo "$repo" --body "$(tf_output state_resource_group)"
+gh variable set TF_STATE_STORAGE_ACCOUNT --repo "$repo" --body "$(tf_output state_storage_account)"
 
 for env in $(node -e 'console.log(Object.keys(JSON.parse(process.argv[1]).deploy_identities.value).join(" "))' "$out"); do
-  identity() { node -e 'console.log(JSON.parse(process.argv[1]).deploy_identities.value[process.argv[2]][process.argv[3]])' "$out" "$env" "$1"; }
+  deploy_identity() { node -e 'console.log(JSON.parse(process.argv[1]).deploy_identities.value[process.argv[2]][process.argv[3]])' "$out" "$env" "$1"; }
 
   echo "GitHub Environment $env"
   # Create it only if it's missing, so a rerun never touches protection rules
@@ -30,8 +30,8 @@ for env in $(node -e 'console.log(Object.keys(JSON.parse(process.argv[1]).deploy
   if ! gh api "repos/$repo/environments/$env" --silent 2>/dev/null; then
     gh api --method PUT "repos/$repo/environments/$env" --silent
   fi
-  gh variable set AZURE_CLIENT_ID --repo "$repo" --env "$env" --body "$(identity client_id)"
-  gh variable set AZURE_PRINCIPAL_ID --repo "$repo" --env "$env" --body "$(identity principal_id)"
+  gh variable set AZURE_CLIENT_ID --repo "$repo" --env "$env" --body "$(deploy_identity client_id)"
+  gh variable set AZURE_PRINCIPAL_ID --repo "$repo" --env "$env" --body "$(deploy_identity principal_id)"
   gh variable set AZURE_TENANT_ID --repo "$repo" --env "$env" --body "$tenant_id"
   gh variable set AZURE_SUBSCRIPTION_ID --repo "$repo" --env "$env" --body "$subscription_id"
 done
