@@ -17,6 +17,21 @@ jobs:
   check:
     name: Build, lint, typecheck and test
     runs-on: ubuntu-latest
+    # The database tests (packages/db) run against a real SQL Server. The password is a
+    # throwaway for this container, which lives only as long as the job.
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-CU20-ubuntu-22.04
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Kitchen_Test_1!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Kitchen_Test_1!' -Q 'SELECT 1'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
     steps:
       - uses: actions/checkout@v7
 
@@ -39,3 +54,4 @@ jobs:
       - run: pnpm exec turbo run build lint typecheck test
         env:
           TURBO_CACHE_DIR: .turbo/cache
+          KITCHEN_TEST_SQL: Server=localhost,1433;User Id=sa;Password=Kitchen_Test_1!;TrustServerCertificate=true
