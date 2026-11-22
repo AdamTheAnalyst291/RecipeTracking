@@ -23,7 +23,10 @@ updates:
     schedule:
       interval: "monthly"
   - package-ecosystem: "terraform"
-    directory: "/infra/bootstrap"
+    directories:
+      - "/infra/bootstrap"
+      - "/infra/modules/environment"
+      - "/infra/environments/dev"
     schedule:
       interval: "monthly"
   - package-ecosystem: "npm"

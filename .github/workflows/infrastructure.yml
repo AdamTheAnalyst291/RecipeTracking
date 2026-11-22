@@ -1,7 +1,12 @@
 name: Infrastructure
 
-# Terraform checks for infra/. Nothing here signs in to Azure: the bootstrap is applied
-# by hand (infra/README.md). Card F3 adds the Dev plan and apply jobs.
+# Terraform checks for infra/, and a Dev plan on pull requests. Applying Dev happens in
+# the Deploy Dev workflow on merge to main, right before the apps deploy. The bootstrap
+# is applied by hand (infra/README.md).
+#
+# The repository is public (ADR-30), so only jobs for branches in this repository sign
+# in to Azure. Pull requests from forks get the checks only: they never run in the `dev`
+# GitHub Environment, which is the only place the Dev deploy identity can be used.
 on:
   pull_request:
     branches: [main]
@@ -38,7 +43,7 @@ jobs:
 
       - name: Validate every root
         run: |
-          for dir in infra/bootstrap; do
+          for dir in infra/bootstrap infra/environments/dev infra/modules/environment; do
             echo "::group::$dir"
             terraform -chdir="$dir" init -backend=false -lockfile=readonly
             terraform -chdir="$dir" validate
@@ -47,3 +52,73 @@ jobs:
 
       # Plan-only tests with mocked providers; they need no Azure sign-in.
       - run: terraform -chdir=infra/bootstrap test
+      - run: terraform -chdir=infra/modules/environment test
+
+  plan-dev:
+    name: Plan Dev
+    needs: check
+    # Same-repository pull requests only; see the note at the top. Dependabot's runs get
+    # no OIDC token, so its pull requests are planned by the apply after merge instead.
+    # No concurrency group: a pending plan in the apply's group would cancel a pending
+    # apply. Terraform's state lock (-lock-timeout) keeps a plan and an apply apart.
+    if: >-
+      github.event_name == 'pull_request'
+      && github.event.pull_request.head.repo.full_name == github.repository
+      && github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write # OIDC sign-in to Azure
+    env:
+      ARM_USE_OIDC: "true"
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_deploy_identity_object_id: ${{ vars.AZURE_PRINCIPAL_ID }}
+    defaults:
+      run:
+        working-directory: infra/environments/dev
+    steps:
+      - name: Check that Azure sign-in is set up
+        working-directory: .
+        env:
+          STATE_ACCOUNT: ${{ vars.TF_STATE_STORAGE_ACCOUNT }}
+        run: |
+          if [ -z "$ARM_CLIENT_ID" ] || [ -z "$TF_VAR_deploy_identity_object_id" ] || [ -z "$STATE_ACCOUNT" ]; then
+            echo "::error::The dev GitHub Environment or the TF_STATE_* repository variables are missing. Run infra/bootstrap and configure-github.sh first (see infra/README.md)."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: terraform init
+        run: >
+          terraform init -lockfile=readonly
+          -backend-config="resource_group_name=${{ vars.TF_STATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TF_STATE_STORAGE_ACCOUNT }}"
+          -backend-config="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}"
+
+      # The plan goes to the job summary rather than a pull request comment, so this job
+      # needs no write access to the repository.
+      - name: terraform plan
+        run: |
+          set -o pipefail
+          terraform plan -no-color -lock-timeout=5m 2>&1 | tee plan.txt
+          {
+            echo "### Terraform plan for Dev"
+            echo
+            grep -E '^(Plan:|No changes\.)' plan.txt || echo "See the job log."
+            echo
+            echo '<details><summary>Full plan</summary>'
+            echo
+            echo '```'
+            tail -c 60000 plan.txt
+            echo '```'
+            echo '</details>'
+          } >> "$GITHUB_STEP_SUMMARY"
