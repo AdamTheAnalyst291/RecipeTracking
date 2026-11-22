@@ -128,11 +128,15 @@ jobs:
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_deploy_identity_object_id: ${{ vars.AZURE_PRINCIPAL_ID }}
+      # The kitchen-dev app registration (infra/README.md, "Sign-in"). Empty until it exists.
+      TF_VAR_auth_client_id: ${{ vars.KITCHEN_AUTH_CLIENT_ID }}
     outputs:
       static_web_app_name: ${{ steps.tf.outputs.static_web_app_name }}
       function_app_name: ${{ steps.tf.outputs.function_app_name }}
       web_url: ${{ steps.tf.outputs.web_url }}
       api_url: ${{ steps.tf.outputs.api_url }}
+      auth_client_id: ${{ steps.tf.outputs.auth_client_id }}
+      tenant_id: ${{ steps.tf.outputs.tenant_id }}
     defaults:
       run:
         working-directory: infra/environments/dev
@@ -172,7 +176,7 @@ jobs:
         id: tf
         run: |
           set -euo pipefail
-          for name in static_web_app_name function_app_name web_url api_url; do
+          for name in static_web_app_name function_app_name web_url api_url auth_client_id tenant_id; do
             echo "$name=$(terraform output -raw "$name")" >> "$GITHUB_OUTPUT"
           done
           terraform output -no-color >> "$GITHUB_STEP_SUMMARY"
@@ -191,6 +195,8 @@ jobs:
       FUNCTION_APP: ${{ needs.apply.outputs.function_app_name }}
       WEB_URL: ${{ needs.apply.outputs.web_url }}
       API_URL: ${{ needs.apply.outputs.api_url }}
+      AUTH_CLIENT_ID: ${{ needs.apply.outputs.auth_client_id }}
+      TENANT_ID: ${{ needs.apply.outputs.tenant_id }}
     steps:
       - name: Check the Terraform outputs arrived
         run: |
@@ -238,7 +244,9 @@ jobs:
       - name: Deploy the web app
         run: |
           set -euo pipefail
-          jq -n --arg apiUrl "$API_URL" '{apiUrl: $apiUrl}' > build/web/config.json
+          # An empty clientId leaves sign-in off until the app registration exists.
+          jq -n --arg apiUrl "$API_URL" --arg clientId "$AUTH_CLIENT_ID" --arg tenantId "$TENANT_ID" \
+            '{apiUrl: $apiUrl, auth: {clientId: $clientId, tenantId: $tenantId}}' > build/web/config.json
           token=$(az staticwebapp secrets list -g "$RESOURCE_GROUP" -n "$SWA_NAME" --query properties.apiKey -o tsv)
           echo "::add-mask::$token"
           SWA_CLI_DEPLOYMENT_TOKEN="$token" npx --yes @azure/static-web-apps-cli@2.1.0 deploy build/web --env production
@@ -255,6 +263,16 @@ jobs:
             echo "::error::$1 did not return the expected content"; return 1
           }
           wait_for "$API_URL/api/health" '"status":"ok"' || exit 1
+          # Sign-in is enforced: no token, no entry.
+          me=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$API_URL/api/me")
+          echo "GET /api/me without a token: HTTP $me"
+          case "$me" in
+            401) ;;
+            500)
+              if [ -n "$AUTH_CLIENT_ID" ]; then echo "::error::The API's sign-in settings are broken (HTTP 500 on /api/me). Is the household-members secret in Key Vault?"; exit 1; fi
+              echo "::warning::Sign-in isn't set up yet: set KITCHEN_AUTH_CLIENT_ID and the household-members secret (infra/README.md, \"Sign-in\")" ;;
+            *) echo "::error::/api/me without a token should be 401, got $me"; exit 1 ;;
+          esac
           wait_for "$WEB_URL/config.json" "$API_URL" || exit 1
           wait_for "$WEB_URL/" 'id="root"' || exit 1
           cors=$(curl -sSI -H "Origin: $WEB_URL" "$API_URL/api/health" | tr -d '\r' | grep -i '^access-control-allow-origin' || true)

@@ -18,6 +18,9 @@ locals {
     managed_by  = "terraform"
   }
 
+  # Key Vault secret holding the household members' Entra object IDs, comma-separated.
+  household_members_secret = "household-members"
+
   # Vite's dev server, so the web app can call the Dev API from a laptop.
   local_origins = var.environment == "dev" ? ["http://localhost:5173"] : []
 }
@@ -92,6 +95,13 @@ resource "azurerm_function_app_flex_consumption" "api" {
     KITCHEN_ENVIRONMENT              = var.environment
     # Where the API reads its secrets (Plaid and others), with its managed identity.
     KITCHEN_KEY_VAULT_URI = azurerm_key_vault.this.vault_uri
+
+    # Sign-in (card F4). The API accepts Entra access tokens for the kitchen's app
+    # registration and lets in only the household's members. Their object IDs stay out
+    # of git and of the public Actions logs: they are a Key Vault secret you add by hand.
+    KITCHEN_AUTH_TENANT_ID    = data.azurerm_client_config.current.tenant_id
+    KITCHEN_AUTH_CLIENT_ID    = var.auth_client_id
+    KITCHEN_HOUSEHOLD_MEMBERS = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.this.name};SecretName=${local.household_members_secret})"
   }
 
   site_config {

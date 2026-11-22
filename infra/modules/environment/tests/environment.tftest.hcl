@@ -175,3 +175,36 @@ run "names_change_with_location" {
     error_message = "Globally unique names must change when the location changes."
   }
 }
+
+run "api_checks_sign_in_against_the_app_registration_and_a_key_vault_household" {
+  command = plan
+
+  variables {
+    auth_client_id = "00000000-0000-0000-0000-000000000004"
+  }
+
+  assert {
+    condition     = azurerm_function_app_flex_consumption.api.app_settings["KITCHEN_AUTH_TENANT_ID"] == "00000000-0000-0000-0000-000000000002"
+    error_message = "The API must trust tokens from the subscription's own tenant."
+  }
+
+  assert {
+    condition     = azurerm_function_app_flex_consumption.api.app_settings["KITCHEN_AUTH_CLIENT_ID"] == "00000000-0000-0000-0000-000000000004"
+    error_message = "The API must accept tokens for the environment's app registration only."
+  }
+
+  assert {
+    condition     = azurerm_function_app_flex_consumption.api.app_settings["KITCHEN_HOUSEHOLD_MEMBERS"] == "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.this.name};SecretName=household-members)"
+    error_message = "Household members must come from Key Vault, never from Terraform or git."
+  }
+}
+
+run "rejects_a_client_id_that_is_not_a_guid" {
+  command = plan
+
+  variables {
+    auth_client_id = "kitchen-dev"
+  }
+
+  expect_failures = [var.auth_client_id]
+}

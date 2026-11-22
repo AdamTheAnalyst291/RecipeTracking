@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@azure/functions": "4.17.1",
-    "@kitchen/shared": "workspace:*"
+    "@kitchen/shared": "workspace:*",
+    "jose": "6.2.15"
   },
   "devDependencies": {
     "@types/node": "26.6.6"

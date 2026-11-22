@@ -202,6 +202,9 @@ importers:
       '@kitchen/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      jose:
+        specifier: 6.2.15
+        version: 6.2.15
     devDependencies:
       '@types/node':
         specifier: 26.6.6
@@ -209,6 +212,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@azure/msal-browser':
+        specifier: 5.29.0
+        version: 5.29.0
       '@kitchen/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -243,6 +249,14 @@ packages:
   '@azure/functions@4.17.1':
     resolution: {integrity: sha512-uvfAoU/j89p1IJ4pi1r4DJysznmbdLV/KZgx26TxF3z06Cnu2NiiNZLHL83Km9oHy+sSuaSUKuEsdj32tL3C6A==}
     engines: {node: '>=20.0'}
+
+  '@azure/msal-browser@5.29.0':
+    resolution: {integrity: sha512-Ko/Ovw6h+Gu33mp8f0FUyddr/KDWzbGzcgR8HKZaT4wgTYljLPKJP1rcDu0RHj7pkd4CR2hCHK51XFzgvq/Q5Q==}
+    engines: {node: '>=0.8.0'}
+
+  '@azure/msal-common@16.16.1':
+    resolution: {integrity: sha512-dSKdL9h/iercb4GumsKFh+wVvLe1ohuDPiviklgnQVHnY2FYNUlbQJ3E1Qd37vkof9CfraK9BQpCW1hoOg0znQ==}
+    engines: {node: '>=0.8.0'}
 
   '@cacheable/memory@2.2.0':
     resolution: {integrity: sha512-CTLKqLItRCEixEAewD3/j9DB3/o96gpTPD4eJ1v+DGOlxZRZncRQkGYqqnAGCscYd6RNeXfGeiuCphsPtqyIfQ==}
@@ -794,6 +808,9 @@ packages:
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
 
+  jose@6.2.15:
+    resolution: {integrity: sha512-qdF6ewcZARtef63fJ9AKKZPgxw+t7USH6HLXYcD4CrdmSvDp79rpJSPFEKc90QBeGS63u1KQtN2MZQHC0yDIzA==}
+
   json-schema-traverse@0.4.1:
     resolution: {integrity: sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629Brsab/mMiHQti9wMP+845RPe3Vg==}
 
@@ -1144,6 +1161,12 @@ snapshots:
     dependencies:
       '@azure/functions-extensions-base': 0.3.0
       cookie: 0.7.2
+
+  '@azure/msal-browser@5.29.0':
+    dependencies:
+      '@azure/msal-common': 16.16.1
+
+  '@azure/msal-common@16.16.1': {}
 
   '@cacheable/memory@2.2.0':
     dependencies:
@@ -1642,6 +1665,8 @@ snapshots:
       is-extglob: 2.1.1
 
   isexe@2.0.0: {}
+
+  jose@6.2.15: {}
 
   json-schema-traverse@0.4.1: {}
 
