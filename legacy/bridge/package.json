@@ -14,7 +14,7 @@
     "test": "tsc && node --test \"dist/**/*.test.js\""
   },
   "dependencies": {
-    "@actual-app/api": "26.10.0",
+    "@actual-app/api": "26.11.0",
     "plaid": "49.0.0"
   },
   "devDependencies": {
