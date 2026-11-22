@@ -41,6 +41,14 @@ Self-hosted kitchen apps running on a Windows laptop with Docker Desktop:
    .\legacy\mealie.cmd schedule-backup
    ```
 
+## Moving to legacy/ (one time, on the laptop)
+
+The laptop files moved into `legacy/`. Your data and `.env` settings carry over; do this once after the change reaches `main`:
+
+1. `git pull`
+2. `.\legacy\mealie.cmd status`: moves your old `.env` from the repo root into `legacy\` (it says so) and warns if a weekly task still points at the old path.
+3. `.\legacy\mealie.cmd schedule-backup`: registers the Sunday backup and audit tasks again with the new path. Until you do, the weekly backups quietly stop.
+
 ## Everyday commands
 
 | Command | What it does |

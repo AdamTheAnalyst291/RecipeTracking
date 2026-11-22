@@ -42,6 +42,15 @@ Set-Location $Root
 $TaskName = 'Mealie weekly backup'
 $AuditTaskName = 'Mealie weekly recipe audit'
 
+# This folder used to be the repo root. A .env left in the old place is moved here,
+# before anything reads it, so settings and keys carry over.
+$OldEnv = Join-Path (Split-Path $Root -Parent) '.env'
+if (-not (Test-Path (Join-Path $Root '.env')) -and (Test-Path $OldEnv) -and
+    (Test-Path (Join-Path (Split-Path $Root -Parent) 'legacy'))) {
+  Move-Item $OldEnv (Join-Path $Root '.env')
+  Write-Host "Moved your .env from the repo root into legacy\." -ForegroundColor Yellow
+}
+
 # One entry per app. Volume names are fixed in docker-compose.yml; backup
 # files are named <Volume>_<date>.tar.gz, which is how restore finds the app.
 $Apps = @(
@@ -196,6 +205,21 @@ function Invoke-Status {
     else { Write-Host "$($app.Name) is NOT answering on port $(Get-AppPort $app)." -ForegroundColor Yellow }
   }
   Show-Urls
+  Test-ScheduledTaskPaths
+}
+
+# Warns when a weekly task still points at a script that no longer exists
+# (it did before the move to legacy\); schedule-backup registers them again.
+function Test-ScheduledTaskPaths {
+  foreach ($name in @($TaskName, $AuditTaskName)) {
+    $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+    if (-not $task) { continue }
+    foreach ($action in $task.Actions) {
+      if ($action.Arguments -match '-File\s+"([^"]+)"' -and -not (Test-Path $Matches[1])) {
+        Write-Host "'$name' points at $($Matches[1]), which no longer exists. Run '.\legacy\mealie.cmd schedule-backup' to fix it." -ForegroundColor Yellow
+      }
+    }
+  }
 }
 
 function Invoke-Backup {

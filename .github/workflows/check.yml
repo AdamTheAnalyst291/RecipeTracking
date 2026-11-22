@@ -106,3 +106,10 @@ jobs:
       - name: Help command runs
         shell: cmd
         run: legacy\mealie.cmd help
+      - name: A .env left at the repo root moves into legacy
+        shell: pwsh
+        run: |
+          Set-Content -Path .env -Value 'MEALIE_PORT=1234'
+          legacy\mealie.cmd help | Out-Null
+          if (Test-Path .env) { throw '.env was not moved' }
+          if ((Get-Content legacy\.env) -ne 'MEALIE_PORT=1234') { throw 'legacy\.env has the wrong content' }
