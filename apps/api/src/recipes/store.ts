@@ -31,6 +31,7 @@ export function createSqlRecipeStore(pool: mssql.ConnectionPool): RecipeStore {
    */
   async function householdId(user: SignedInUser): Promise<string> {
     const find = async (): Promise<string | undefined> => {
+      if (user.household.memberObjectIds.length === 0) return undefined;
       const request = pool.request();
       const placeholders = user.household.memberObjectIds.map((oid, i) => {
         request.input(`m${i}`, mssql.UniqueIdentifier, oid);
@@ -154,10 +155,20 @@ export function createSqlRecipeStore(pool: mssql.ConnectionPool): RecipeStore {
       );
       let foodId: string | undefined = existing.recordset[0]?.id;
       if (!foodId) {
-        const added = await req()
-          .input("name", mssql.NVarChar(200), ingredient.food)
-          .query("INSERT food (household_id, name) OUTPUT inserted.id VALUES (@h, @name)");
-        foodId = added.recordset[0].id as string;
+        try {
+          const added = await req()
+            .input("name", mssql.NVarChar(200), ingredient.food)
+            .query("INSERT food (household_id, name) OUTPUT inserted.id VALUES (@h, @name)");
+          foodId = added.recordset[0].id as string;
+        } catch (error) {
+          // Another request added the same food a moment ago: use theirs.
+          if (!isUniqueViolation(error)) throw error;
+          const winner = await req().input("name", mssql.NVarChar(200), ingredient.food).query(
+            "SELECT id FROM food WHERE household_id = @h AND name = @name",
+          );
+          foodId = winner.recordset[0]?.id as string | undefined;
+          if (!foodId) throw error;
+        }
       }
       await req()
         .input("pos", mssql.Int, i + 1)
@@ -234,7 +245,7 @@ export function createSqlRecipeStore(pool: mssql.ConnectionPool): RecipeStore {
            OUTPUT inserted.id
            VALUES (@h, @name, @servings, @minutes, @url, @credit)`,
         );
-        const id = String(created.recordset[0].id);
+        const id = String(created.recordset[0].id).toLowerCase();
         await writeParts(tx, household, id, input);
         const saved = await read(tx, household, id);
         if (!saved) throw new Error("A recipe just inserted was not found");
