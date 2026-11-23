@@ -29,6 +29,17 @@ updates:
       - "/infra/environments/dev"
     schedule:
       interval: "monthly"
+    # One PR for all three folders, so a provider bump never lands in some of them only
+    # (azurerm 5.14 split across #30, #32 and #33 broke terraform init on main).
+    groups:
+      terraform:
+        patterns: ["*"]
+    # Provider majors change live resources: take them as a planned card, not a bump.
+    ignore:
+      - dependency-name: "hashicorp/azurerm"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "azure/azapi"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: "npm"
     directory: "/legacy/bridge"
     schedule:
