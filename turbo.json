@@ -4,6 +4,6 @@
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^build"] },
     "lint": { "dependsOn": ["^build"] },
-    "test": { "dependsOn": ["^build"] }
+    "test": { "dependsOn": ["^build"], "passThroughEnv": ["KITCHEN_TEST_SQL"] }
   }
 }
