@@ -9,6 +9,7 @@ export interface MeResponse {
   household: { id: string };
 }
 
+export * from "./recipes.js";
 /** A pantry product: something bought or kept, tied to a food. Dates are `YYYY-MM-DD`. */
 export interface PantryProduct {
   id: string;

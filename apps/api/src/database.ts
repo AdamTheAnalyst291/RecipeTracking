@@ -1,5 +1,6 @@
 import { connectEntra, createPantry, resolveHousehold, type Pantry } from "@kitchen/db";
 import type { PantryAccess } from "./functions/pantry.js";
+import { createSqlRecipeStore, type RecipeStore } from "./recipes/store.js";
 
 type Pool = Awaited<ReturnType<typeof connectEntra>>;
 
@@ -33,4 +34,9 @@ export const pantryAccess: PantryAccess = async (user) => {
 /** The pantry across every household, for jobs that run without anyone signed in. */
 export async function pantryForJobs(): Promise<Pantry> {
   return createPantry(await getPool());
+}
+
+/** Recipes, against the real database. */
+export async function recipeStore(): Promise<RecipeStore> {
+  return createSqlRecipeStore(await getPool());
 }

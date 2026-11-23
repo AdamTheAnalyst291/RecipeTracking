@@ -10,8 +10,12 @@ import sql from "mssql";
 export const testServer = process.env.KITCHEN_TEST_SQL;
 
 // Locally the database tests skip without a server. In CI a missing server must fail,
-// or the suite would pass green without proving anything.
-if (!testServer && process.env.CI) {
+// or the suite would pass green without proving anything. The one exception is the Deploy
+// Dev workflow, which rebuilds what the pull-request workflow already tested (against a
+// SQL Server it has no service for) and so lets those tests skip. Anywhere else, including
+// a renamed or new workflow, the guard stays on.
+const skipsInCi = process.env.GITHUB_WORKFLOW === "Deploy Dev";
+if (!testServer && process.env.CI && !skipsInCi) {
   throw new Error("KITCHEN_TEST_SQL is not set in CI, so the database tests would silently skip");
 }
 
