@@ -13,6 +13,19 @@ describe("loadConfig", () => {
     expect(fetchFn).toHaveBeenCalledWith("/config.json", { cache: "no-store" });
   });
 
+  it("reads the sign-in settings when the deploy wrote them", async () => {
+    const auth = { clientId: "22222222-2222-4222-8222-222222222222", tenantId: "11111111-1111-4111-8111-111111111111" };
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ apiUrl: "https://api.example.net", auth }));
+
+    await expect(loadConfig(fetchFn)).resolves.toEqual({ apiUrl: "https://api.example.net", auth });
+  });
+
+  it("leaves sign-in out when the settings are blank, as on a laptop", async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ apiUrl: "http://localhost:7071", auth: { clientId: "", tenantId: "" } }));
+
+    await expect(loadConfig(fetchFn)).resolves.toEqual({ apiUrl: "http://localhost:7071" });
+  });
+
   it("throws when the file is missing", async () => {
     const fetchFn = vi.fn().mockResolvedValue(new Response("nope", { status: 404 }));
 

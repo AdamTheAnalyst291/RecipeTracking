@@ -47,6 +47,12 @@ variable "deploy_identity_object_id" {
   type        = string
 }
 
+variable "auth_client_id" {
+  description = "Client ID of the kitchen-dev app registration (GitHub variable KITCHEN_AUTH_CLIENT_ID on the dev environment). Empty until it exists."
+  type        = string
+  default     = ""
+}
+
 module "environment" {
   source = "../../modules/environment"
 
@@ -58,6 +64,8 @@ module "environment" {
     login_username = "kitchen-github-dev"
     object_id      = var.deploy_identity_object_id
   }
+
+  auth_client_id = var.auth_client_id
 }
 
 output "web_url" {
@@ -90,4 +98,12 @@ output "sql_server_fqdn" {
 
 output "app_database_name" {
   value = module.environment.app_database_name
+}
+
+output "auth_client_id" {
+  value = module.environment.auth_client_id
+}
+
+output "tenant_id" {
+  value = module.environment.tenant_id
 }

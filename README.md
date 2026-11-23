@@ -2,7 +2,7 @@
 
 Two halves live in this repo while the move happens (ADR-25):
 
-- **The new kitchen app** (`apps/`, `packages/`): a pnpm + turbo monorepo that will replace Mealie, Grocy and Actual Budget. `apps/web` is React + Vite, `apps/api` is Azure Functions on Node 24, and `packages/shared` holds types both use. From the repo root: `pnpm install`, then `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`. CI (`.github/workflows/pull-request.yml`) runs the same on each pull request.
+- **The new kitchen app** (`apps/`, `packages/`): a pnpm + turbo monorepo that will replace Mealie, Grocy and Actual Budget. `apps/web` is React + Vite, `apps/api` is Azure Functions on Node 24, and `packages/shared` holds types both use. From the repo root: `pnpm install`, then `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`. CI (`.github/workflows/pull-request.yml`) runs the same on each pull request. Sign-in is Microsoft Entra, for household members only; `infra/README.md` ("Sign-in") has the one-time setup. Locally, `apps/web/public/config.json` leaves sign-in off; to try it against Dev, fill in its `auth` block with Dev's client ID and tenant ID, and don't commit them.
 - **The legacy laptop setup** (`legacy/`): everything below. It is still the live system until switch-over (card S3), then it is deleted. Run its commands from the repo root as `.\legacy\mealie.cmd <command>`.
 
 ---

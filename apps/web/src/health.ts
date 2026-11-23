@@ -2,8 +2,16 @@ import type { HealthResponse } from "@kitchen/shared";
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
+export interface AuthSettings {
+  /** The kitchen's Entra app registration. */
+  clientId: string;
+  tenantId: string;
+}
+
 export interface AppConfig {
   apiUrl: string;
+  /** Missing when the deploy didn't set up sign-in (a laptop, or before the app registration exists). */
+  auth?: AuthSettings;
 }
 
 export type ApiHealth = { state: "ok" } | { state: "down"; reason: string };
@@ -17,7 +25,12 @@ export async function loadConfig(fetchFn: Fetch = fetch): Promise<AppConfig> {
   if (!response.ok) throw new Error(`Could not load /config.json (HTTP ${response.status})`);
   const body = (await response.json()) as Partial<AppConfig>;
   if (typeof body.apiUrl !== "string" || body.apiUrl === "") throw new Error("/config.json has no apiUrl");
-  return { apiUrl: body.apiUrl.replace(/\/+$/, "") };
+  const apiUrl = body.apiUrl.replace(/\/+$/, "");
+  const auth = body.auth;
+  if (typeof auth?.clientId === "string" && auth.clientId !== "" && typeof auth.tenantId === "string" && auth.tenantId !== "") {
+    return { apiUrl, auth: { clientId: auth.clientId, tenantId: auth.tenantId } };
+  }
+  return { apiUrl };
 }
 
 export async function checkApiHealth(apiUrl: string, fetchFn: Fetch = fetch): Promise<ApiHealth> {

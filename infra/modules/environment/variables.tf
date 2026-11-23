@@ -37,3 +37,14 @@ variable "key_vault_purge_protection" {
   type        = bool
   default     = false
 }
+
+variable "auth_client_id" {
+  description = "Client ID of the kitchen's Entra app registration for this environment, created by hand (infra/README.md, \"Sign-in\"). Empty until it exists; the API then refuses every request that needs sign-in."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.auth_client_id == "" || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.auth_client_id))
+    error_message = "auth_client_id must be empty or an app registration's client ID (a lowercase GUID)."
+  }
+}

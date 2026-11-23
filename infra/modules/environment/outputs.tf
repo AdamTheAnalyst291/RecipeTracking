@@ -38,3 +38,12 @@ output "sql_server_fqdn" {
 output "app_database_name" {
   value = azapi_resource.app_database.name
 }
+
+output "auth_client_id" {
+  description = "The web app signs in with this app registration; the deploy writes it to config.json."
+  value       = var.auth_client_id
+}
+
+output "tenant_id" {
+  value = data.azurerm_client_config.current.tenant_id
+}
