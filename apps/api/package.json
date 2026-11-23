@@ -13,10 +13,13 @@
   "dependencies": {
     "@azure/functions": "4.17.1",
     "@kitchen/shared": "workspace:*",
-    "jose": "6.2.15"
+    "jose": "6.2.15",
+    "@kitchen/db": "workspace:*",
+    "mssql": "12.7.14"
   },
   "devDependencies": {
-    "@types/node": "26.6.6"
+    "@types/node": "26.6.6",
+    "@types/mssql": "12.3.0"
   },
   "files": [
     "dist",

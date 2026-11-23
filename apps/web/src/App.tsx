@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { checkApiHealth, loadConfig, type ApiHealth } from "./health.js";
 import { fetchMe, type Me } from "./me.js";
+import { createRecipeApi } from "./recipes/api.js";
+import { Recipes } from "./recipes/Recipes.js";
 import { startSignIn, type SignIn } from "./signIn.js";
 
 type Session =
   | { state: "loading" }
   | { state: "not-configured" }
   | { state: "signed-out"; signIn: SignIn }
-  | { state: "signed-in"; signIn: SignIn; me: Me }
+  | { state: "signed-in"; signIn: SignIn; me: Me; apiUrl: string }
   | { state: "failed"; reason: string };
 
 export function App() {
@@ -29,7 +31,7 @@ export function App() {
         if (!config.auth) return { state: "not-configured" } as const;
         const signIn = await startSignIn(config.auth);
         if (!signIn.account) return { state: "signed-out", signIn } as const;
-        return { state: "signed-in", signIn, me: await fetchMe(config.apiUrl, signIn.getToken) } as const;
+        return { state: "signed-in", signIn, me: await fetchMe(config.apiUrl, signIn.getToken), apiUrl: config.apiUrl } as const;
       })
       .catch((error: unknown): Session => ({ state: "failed", reason: reason(error) }))
       .then((result) => {
@@ -76,9 +78,12 @@ function SessionView({ session }: { session: Session }) {
       const { me } = session;
       if (me.state === "member") {
         return (
-          <p>
-            Signed in as {me.profile.name ?? session.signIn.account?.username} (household {me.profile.household.id}). {signOut}
-          </p>
+          <>
+            <p>
+              Signed in as {me.profile.name ?? session.signIn.account?.username} (household {me.profile.household.id}). {signOut}
+            </p>
+            <KitchenRecipes apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
+          </>
         );
       }
       if (me.state === "signed-out") {
@@ -102,4 +107,9 @@ function SessionView({ session }: { session: Session }) {
       );
     }
   }
+}
+
+function KitchenRecipes({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
+  const api = useMemo(() => createRecipeApi(apiUrl, getToken), [apiUrl, getToken]);
+  return <Recipes api={api} />;
 }
