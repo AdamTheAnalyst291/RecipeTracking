@@ -14,8 +14,8 @@
     "@azure/functions": "4.17.1",
     "@kitchen/db": "workspace:*",
     "@kitchen/shared": "workspace:*",
-    "jose": "6.2.15",
-    "mssql": "12.7.14"
+    "jose": "6.2.18",
+    "mssql": "12.7.16"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
