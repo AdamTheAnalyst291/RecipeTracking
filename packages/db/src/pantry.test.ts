@@ -239,6 +239,24 @@ describe.skipIf(!testServer)("pantry", () => {
       expect(updated).toMatchObject({ priceCents: 279, priceDate: "2026-11-22" });
     });
 
+    it("keeps the newer price when an older-dated one arrives later", async () => {
+      const { household, product } = await withFlour();
+      await pantry.setPrice(household, product.id, { priceCents: 279, packageQuantity: 1500, date: "2026-11-22" });
+
+      const updated = await pantry.setPrice(household, product.id, { priceCents: 199, packageQuantity: 1500, date: "2026-11-01" });
+
+      expect(updated).toMatchObject({ priceCents: 279, priceDate: "2026-11-22" });
+    });
+
+    it("takes a price dated the same day as the one on record", async () => {
+      const { household, product } = await withFlour();
+      await pantry.setPrice(household, product.id, { priceCents: 279, packageQuantity: 1500, date: "2026-11-22" });
+
+      const updated = await pantry.setPrice(household, product.id, { priceCents: 259, packageQuantity: 1500, date: "2026-11-22" });
+
+      expect(updated.priceCents).toBe(259);
+    });
+
     it.each([
       ["a negative price", { priceCents: -1, packageQuantity: 1500, date: "2026-11-20" }],
       ["a fractional number of cents", { priceCents: 2.5, packageQuantity: 1500, date: "2026-11-20" }],

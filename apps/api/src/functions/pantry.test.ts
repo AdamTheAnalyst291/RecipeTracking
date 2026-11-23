@@ -144,6 +144,19 @@ describe("PATCH /api/pantry/products/{id}", () => {
     expect(pantry.setStaple).toHaveBeenCalledTimes(1);
   });
 
+  it("refuses a bad price before moving the stock, so nothing is half-applied", async () => {
+    const { pantry, handlers } = fakePantry();
+
+    const response = await handlers.update(
+      req("PATCH", { stock: { set: 1 }, price: { priceCents: 1, packageQuantity: 1, date: "yesterday" } }, flour.id),
+      ctx(),
+      user,
+    );
+
+    expect(response.status).toBe(400);
+    expect(pantry.adjustStock).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["nothing to change", {}],
     ["a stock with both set and delta", { stock: { set: 1, delta: 1 } }],

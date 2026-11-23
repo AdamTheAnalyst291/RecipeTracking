@@ -3,6 +3,8 @@ export { listMigrations, migrationsDir, runMigrations, type Migration } from "./
 export {
   PantryError,
   createPantry,
+  validatePrice,
+  validateStockChange,
   type NewProduct,
   type Pantry,
   type Price,

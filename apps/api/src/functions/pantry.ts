@@ -1,5 +1,5 @@
 import type { HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { PantryError, type Pantry } from "@kitchen/db";
+import { PantryError, validatePrice, validateStockChange, type Pantry } from "@kitchen/db";
 import type { ApiError, NewPantryProduct, PantryProductChange, PantryResponse } from "@kitchen/shared";
 import type { AuthenticatedHandler, SignedInUser } from "../auth.js";
 
@@ -32,6 +32,12 @@ function optional<T>(body: Record<string, unknown>, key: string, type: "string" 
   if (value === undefined) return undefined;
   if (typeof value !== type) throw new BadRequest(`${key} must be a ${type}.`);
   return value as T;
+}
+
+function requiredOf<T>(body: Record<string, unknown>, key: string, type: "string" | "number" | "boolean"): T {
+  const value = optional<T>(body, key, type);
+  if (value === undefined) throw new BadRequest(`price.${key} is required.`);
+  return value;
 }
 
 function required(body: Record<string, unknown>, key: string): string {
@@ -70,18 +76,15 @@ function parseChange(body: Record<string, unknown>): PantryProductChange {
     const price = body.price;
     if (!isObject(price)) throw new BadRequest("price must be { priceCents, packageQuantity, date }.");
     change.price = {
-      priceCents: optional<number>(price, "priceCents", "number") ?? failMissing("priceCents"),
-      packageQuantity: optional<number>(price, "packageQuantity", "number") ?? failMissing("packageQuantity"),
-      date: optional<string>(price, "date", "string") ?? failMissing("date"),
+      priceCents: requiredOf<number>(price, "priceCents", "number"),
+      packageQuantity: requiredOf<number>(price, "packageQuantity", "number"),
+      date: requiredOf<string>(price, "date", "string"),
     };
   }
   if (Object.keys(change).length === 0) throw new BadRequest("Send at least one of stock, staple or price.");
   return change;
 }
 
-const failMissing = (key: string): never => {
-  throw new BadRequest(`price.${key} is required.`);
-};
 
 /** Wraps a pantry call: bad input and store refusals become 4xx, anything else (usually the database) 503. */
 async function respond(context: InvocationContext, run: () => Promise<HttpResponseInit>): Promise<HttpResponseInit> {
@@ -120,6 +123,9 @@ export function createPantryHandlers(access: PantryAccess): Record<"list" | "add
         const id = request.params.id ?? "";
         if (!GUID.test(id)) throw new BadRequest("The product id isn't an ID.");
         const change = parseChange(await readObject(request));
+        // Check the whole change first, so a bad price can't arrive after the stock has already moved.
+        if (change.stock) validateStockChange(change.stock);
+        if (change.price) validatePrice(change.price);
         const { pantry, householdId } = await access(user);
         let product;
         if (change.stock) product = await pantry.adjustStock(householdId, id, change.stock);

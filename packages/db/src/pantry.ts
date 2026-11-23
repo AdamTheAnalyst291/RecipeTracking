@@ -89,6 +89,25 @@ function checkDate(value: string, what: string): void {
   if (!valid) throw new PantryError("invalid", `${what} must be a date like 2026-11-22.`);
 }
 
+/** Throws PantryError("invalid") for a price the store would refuse. Lets a caller check a whole change before applying any of it. */
+export function validatePrice(price: Price): void {
+  if (!Number.isInteger(price.priceCents) || price.priceCents < 0 || price.priceCents > MAX_PRICE_CENTS) {
+    throw new PantryError("invalid", "The price must be a whole number of cents, 0 or more.");
+  }
+  checkQuantity(price.packageQuantity, "The package size", { allowZero: false });
+  checkDate(price.date, "The price date");
+}
+
+/** Throws PantryError("invalid") for a stock change the store would refuse outright (a delta that goes below 0 is only known against the stored stock). */
+export function validateStockChange(change: StockChange): void {
+  const isSet = "set" in change;
+  const amount = isSet ? change.set : change.delta;
+  if (typeof amount !== "number" || !Number.isFinite(amount) || Math.abs(amount) > MAX_QUANTITY) {
+    throw new PantryError("invalid", "The stock change must be a number.");
+  }
+  if (isSet && amount < 0) throw new PantryError("invalid", "Stock can't be below 0.");
+}
+
 export function createPantry(pool: mssql.ConnectionPool): Pantry {
   async function getProduct(householdId: string, productId: string): Promise<Product> {
     const r = await pool
@@ -139,12 +158,9 @@ export function createPantry(pool: mssql.ConnectionPool): Pantry {
     },
 
     async adjustStock(householdId, productId, change) {
+      validateStockChange(change);
       const isSet = "set" in change;
       const amount = isSet ? change.set : change.delta;
-      if (typeof amount !== "number" || !Number.isFinite(amount) || Math.abs(amount) > MAX_QUANTITY) {
-        throw new PantryError("invalid", "The stock change must be a number.");
-      }
-      if (isSet && amount < 0) throw new PantryError("invalid", "Stock can't be below 0.");
 
       // One statement, so two changes at once both land, and stock never goes negative.
       const r = await pool
@@ -176,11 +192,7 @@ export function createPantry(pool: mssql.ConnectionPool): Pantry {
     },
 
     async setPrice(householdId, productId, price) {
-      if (!Number.isInteger(price.priceCents) || price.priceCents < 0 || price.priceCents > MAX_PRICE_CENTS) {
-        throw new PantryError("invalid", "The price must be a whole number of cents, 0 or more.");
-      }
-      checkQuantity(price.packageQuantity, "The package size", { allowZero: false });
-      checkDate(price.date, "The price date");
+      validatePrice(price);
       const r = await pool
         .request()
         .input("h", mssql.UniqueIdentifier, householdId)
@@ -190,8 +202,11 @@ export function createPantry(pool: mssql.ConnectionPool): Pantry {
         .input("date", mssql.Date, price.date)
         .query(`
           UPDATE product SET price_cents = @cents, package_quantity = @size, price_date = CONVERT(DATE, @date)
-          OUTPUT inserted.id WHERE household_id = @h AND id = @p`);
-      if (r.recordset.length === 0) throw new PantryError("not-found", "No such product.");
+          OUTPUT inserted.id WHERE household_id = @h AND id = @p
+            AND (price_date IS NULL OR price_date <= CONVERT(DATE, @date))`);
+      // A price dated before the one on record is history, not the latest: leave the latest alone.
+      // (No row updated is then either that or no such product; getProduct tells them apart.)
+      void r;
       return getProduct(householdId, productId);
     },
 

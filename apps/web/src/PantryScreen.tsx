@@ -11,7 +11,7 @@ interface Props {
 
 type Loaded = { state: "loading" } | { state: "error"; reason: string } | { state: "ready"; products: PantryProduct[] };
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+const today = (): string => new Date().toLocaleDateString("en-CA"); // local date as YYYY-MM-DD
 
 export function PantryScreen({ apiUrl, getToken, onSignedOut }: Props) {
   const [loaded, setLoaded] = useState<Loaded>({ state: "loading" });
