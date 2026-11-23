@@ -12,3 +12,12 @@ export {
   type StockChange,
 } from "./pantry.js";
 export { resolveHousehold, type Member } from "./households.js";
+export {
+  CookingError,
+  createCooking,
+  type CookOptions,
+  type CookResult,
+  type Cooking,
+  type Shortfall,
+  type UsedStock,
+} from "./cooking.js";

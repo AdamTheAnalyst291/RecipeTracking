@@ -207,3 +207,66 @@ describe("deleting a recipe", () => {
     expect(api.recipes.has(flatbread.id)).toBe(true);
   });
 });
+
+describe("I made this", () => {
+  it("logs the cook for the servings made and says what was used up", async () => {
+    const { api, user } = open();
+    await user.click(await screen.findByRole("button", { name: "Lentil soup" }));
+
+    await user.click(await screen.findByRole("button", { name: "I made this" }));
+
+    expect(api.cooks).toEqual([{ id: lentilSoup.id, servingsMade: 4 }]);
+    const status = await screen.findByRole("status");
+    expect(status.textContent).toContain("Logged");
+    expect(status.textContent).toContain("100 g Flour");
+  });
+
+  it("sends the servings the person typed", async () => {
+    const { api, user } = open();
+    await user.click(await screen.findByRole("button", { name: "Lentil soup" }));
+
+    const servings = await screen.findByLabelText("Servings made");
+    await user.clear(servings);
+    await user.type(servings, "2");
+    await user.click(screen.getByRole("button", { name: "I made this" }));
+
+    await screen.findByRole("status");
+    expect(api.cooks).toEqual([{ id: lentilSoup.id, servingsMade: 2 }]);
+  });
+
+  it("says when the pantry ran short", async () => {
+    const api = inMemoryRecipeApi();
+    api.cookResult = { shortfalls: [{ food: "Red lentils", amount: 0.5, unit: "cup" }] };
+    const { user } = open(api);
+    await user.click(await screen.findByRole("button", { name: "Lentil soup" }));
+
+    await user.click(await screen.findByRole("button", { name: "I made this" }));
+
+    expect((await screen.findByRole("status")).textContent).toContain("Ran short: 0.5 cup Red lentils");
+  });
+
+  it("shows the problem and doesn't claim it was logged when the API refuses", async () => {
+    const api = inMemoryRecipeApi();
+    api.failCookWith = new RecipeApiError(503, ["Couldn't save that right now."]);
+    const { user } = open(api);
+    await user.click(await screen.findByRole("button", { name: "Lentil soup" }));
+
+    await user.click(await screen.findByRole("button", { name: "I made this" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Couldn't save that right now.");
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("won't send non-positive servings", async () => {
+    const { api, user } = open();
+    await user.click(await screen.findByRole("button", { name: "Lentil soup" }));
+    const servings = await screen.findByLabelText("Servings made");
+    await user.clear(servings);
+    await user.type(servings, "0");
+
+    await user.click(screen.getByRole("button", { name: "I made this" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("servings");
+    expect(api.cooks).toEqual([]);
+  });
+});

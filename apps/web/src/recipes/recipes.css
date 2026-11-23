@@ -76,3 +76,12 @@
 .recipe-problems {
   color: #b00020;
 }
+.recipe-cook {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.recipe-cook input {
+  width: 5rem;
+}

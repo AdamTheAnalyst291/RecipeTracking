@@ -1,4 +1,4 @@
-import type { Recipe, RecipeInput, Unit } from "@kitchen/shared";
+import type { CookedResponse, Recipe, RecipeInput, Unit } from "@kitchen/shared";
 import { RecipeApiError, type RecipeApi } from "./api.js";
 
 /** Made-up recipes for the screen tests; the repo is public. */
@@ -39,11 +39,37 @@ export const units: Unit[] = [
 export function inMemoryRecipeApi(initial: Recipe[] = [lentilSoup, flatbread]): RecipeApi & {
   recipes: Map<string, Recipe>;
   failNextWith?: RecipeApiError;
+  /** Every "I made this" press, in order. */
+  cooks: { id: string; servingsMade: number | undefined }[];
+  /** Overrides what the next cooks report back; the default says it used 100 g of flour. */
+  cookResult: Partial<CookedResponse>;
+  failCookWith?: RecipeApiError;
 } {
   const recipes = new Map(initial.map((r) => [r.id, r]));
   let next = 1;
   const api: ReturnType<typeof inMemoryRecipeApi> = {
     recipes,
+    cooks: [],
+    cookResult: {},
+    async cooked(id, servingsMade) {
+      const fail = api.failCookWith;
+      if (fail) {
+        api.failCookWith = undefined;
+        throw fail;
+      }
+      const recipe = recipes.get(id);
+      if (!recipe) throw new RecipeApiError(404, ["HTTP 404"]);
+      api.cooks.push({ id, servingsMade });
+      return {
+        eventId: "99999999-9999-4999-8999-999999999999",
+        recipeId: id,
+        servingsMade: servingsMade ?? recipe.servings ?? 1,
+        cookedAt: "2026-11-22T12:00:00.000Z",
+        used: [{ product: "Flour", amount: 100, unit: "g" }],
+        shortfalls: [],
+        ...api.cookResult,
+      };
+    },
     async list() {
       const fail = api.failNextWith;
       if (fail) {

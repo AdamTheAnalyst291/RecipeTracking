@@ -1,4 +1,5 @@
-import { connectEntra, createPantry, resolveHousehold, type Pantry } from "@kitchen/db";
+import { connectEntra, createCooking, createPantry, resolveHousehold, type Pantry } from "@kitchen/db";
+import type { CookingAccess } from "./functions/cooking.js";
 import type { PantryAccess } from "./functions/pantry.js";
 import { createSqlRecipeStore, type RecipeStore } from "./recipes/store.js";
 
@@ -40,3 +41,10 @@ export async function pantryForJobs(): Promise<Pantry> {
 export async function recipeStore(): Promise<RecipeStore> {
   return createSqlRecipeStore(await getPool());
 }
+
+/** Cooking ("I made this") for the signed-in member's household, against the real database. */
+export const cookingAccess: CookingAccess = async (user) => {
+  const db = await getPool();
+  const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
+  return { cooking: createCooking(db), householdId };
+};
