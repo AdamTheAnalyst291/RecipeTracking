@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@azure/functions": "4.17.1",
+    "@kitchen/db": "workspace:*",
     "@kitchen/shared": "workspace:*",
     "jose": "6.2.15"
   },

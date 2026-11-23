@@ -1,7 +1,11 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
 import { withAuth, type AuthenticatedHandler } from "./auth.js";
+import { pantryAccess } from "./database.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
+import { createPantryHandlers } from "./functions/pantry.js";
+
+const pantry = createPantryHandlers(pantryAccess);
 
 interface RouteBase {
   name: string;
@@ -20,6 +24,9 @@ type RouteSpec =
 const specs: RouteSpec[] = [
   { name: "health", route: "health", methods: ["GET"], access: "public", handler: health },
   { name: "me", route: "me", methods: ["GET"], access: "household", handler: meHandler },
+  { name: "pantryList", route: "pantry/products", methods: ["GET"], access: "household", handler: pantry.list },
+  { name: "pantryAdd", route: "pantry/products", methods: ["POST"], access: "household", handler: pantry.add },
+  { name: "pantryUpdate", route: "pantry/products/{id}", methods: ["PATCH"], access: "household", handler: pantry.update },
 ];
 
 export const routes: (RouteBase & { access: RouteSpec["access"]; handler: HttpHandler })[] = specs.map((spec) =>

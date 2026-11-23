@@ -199,6 +199,9 @@ importers:
       '@azure/functions':
         specifier: 4.17.1
         version: 4.17.1
+      '@kitchen/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       '@kitchen/shared':
         specifier: workspace:*
         version: link:../../packages/shared
