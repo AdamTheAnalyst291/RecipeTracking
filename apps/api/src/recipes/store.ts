@@ -1,4 +1,5 @@
 import type { Recipe, RecipeInput, RecipeSummary, Unit } from "@kitchen/shared";
+import { resolveHousehold } from "@kitchen/db";
 import mssql from "mssql";
 import type { SignedInUser } from "../auth.js";
 
@@ -24,68 +25,8 @@ function isUniqueViolation(error: unknown): boolean {
 }
 
 export function createSqlRecipeStore(pool: mssql.ConnectionPool): RecipeStore {
-  /**
-   * The database household this person belongs to. The first request from a household member
-   * creates the household (or joins them to the one a fellow member already made), so there is
-   * no separate sign-up step.
-   */
-  async function householdId(user: SignedInUser): Promise<string> {
-    const find = async (): Promise<string | undefined> => {
-      if (user.household.memberObjectIds.length === 0) return undefined;
-      const request = pool.request();
-      const placeholders = user.household.memberObjectIds.map((oid, i) => {
-        request.input(`m${i}`, mssql.UniqueIdentifier, oid);
-        return `@m${i}`;
-      });
-      const rows = await request.query(
-        `SELECT TOP 1 household_id AS id FROM [user] WHERE entra_object_id IN (${placeholders.join(", ")}) ORDER BY created_at`,
-      );
-      return rows.recordset[0]?.id;
-    };
-
-    const found = await find();
-    if (found) {
-      await addMember(found, user);
-      return found;
-    }
-    const tx = new mssql.Transaction(pool);
-    await tx.begin();
-    try {
-      const created = await new mssql.Request(tx).query("INSERT household (name) OUTPUT inserted.id VALUES (N'Home')");
-      const id: string = created.recordset[0].id;
-      await new mssql.Request(tx)
-        .input("h", mssql.UniqueIdentifier, id)
-        .input("oid", mssql.UniqueIdentifier, user.objectId)
-        .input("name", mssql.NVarChar(200), user.name ?? null)
-        .query("INSERT [user] (household_id, entra_object_id, display_name) VALUES (@h, @oid, @name)");
-      await tx.commit();
-      return id;
-    } catch (error) {
-      await tx.rollback().catch(() => undefined);
-      // Two first requests at once: the other one won, so use its household.
-      if (isUniqueViolation(error)) {
-        const winner = await find();
-        if (winner) return winner;
-      }
-      throw error;
-    }
-  }
-
-  async function addMember(household: string, user: SignedInUser): Promise<void> {
-    try {
-      await pool
-        .request()
-        .input("h", mssql.UniqueIdentifier, household)
-        .input("oid", mssql.UniqueIdentifier, user.objectId)
-        .input("name", mssql.NVarChar(200), user.name ?? null)
-        .query(
-          `IF NOT EXISTS (SELECT 1 FROM [user] WHERE entra_object_id = @oid)
-             INSERT [user] (household_id, entra_object_id, display_name) VALUES (@h, @oid, @name)`,
-        );
-    } catch (error) {
-      if (!isUniqueViolation(error)) throw error;
-    }
-  }
+  /** The database household this person belongs to (created on a member's first request). */
+  const householdId = (user: SignedInUser) => resolveHousehold(pool, { objectId: user.objectId, displayName: user.name });
 
   const GUID = mssql.UniqueIdentifier;
 

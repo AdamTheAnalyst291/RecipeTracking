@@ -1,10 +1,7 @@
 -- Recipes (card K1, ADR-25): a recipe with its tags, ingredients and ordered steps, all
--- scoped to a household. Ingredients point at the shared food and unit tables. Adds
--- tables and one unique constraint; nothing here drops or rewrites anything.
-
--- Lets an ingredient's foreign key carry the household, so a recipe can never use
--- another household's food.
-ALTER TABLE food ADD CONSTRAINT uq_food_id_household UNIQUE (id, household_id);
+-- scoped to a household. Ingredients point at the shared food and unit tables, and use the
+-- (id, household_id) key on food that 0003 added, so a recipe can never use another
+-- household's food. Adds tables only; nothing here drops or rewrites anything.
 
 CREATE TABLE recipe (
   id            UNIQUEIDENTIFIER NOT NULL CONSTRAINT pk_recipe PRIMARY KEY CONSTRAINT df_recipe_id DEFAULT NEWSEQUENTIALID(),

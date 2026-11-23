@@ -1,8 +1,7 @@
 import type { HttpRequest, HttpResponseInit } from "@azure/functions";
-import { connectEntra } from "@kitchen/db";
 import { parseRecipeInput, type RecipeListResponse, type UnitListResponse } from "@kitchen/shared";
 import type { AuthenticatedHandler } from "../auth.js";
-import { createSqlRecipeStore, RecipeInputError, type RecipeStore } from "../recipes/store.js";
+import { RecipeInputError, type RecipeStore } from "../recipes/store.js";
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -88,24 +87,4 @@ export function createRecipeHandlers(getStore: () => RecipeStore | Promise<Recip
       return { status: 200, jsonBody: body };
     }),
   };
-}
-
-let defaultStore: Promise<RecipeStore> | undefined;
-
-/**
- * The deployed API's store: Azure SQL, reached with the Functions app's managed identity.
- * `KITCHEN_SQL_SERVER` is the server's full name and `KITCHEN_SQL_DATABASE` the database.
- */
-export function sqlStoreFromEnv(env: Record<string, string | undefined> = process.env): Promise<RecipeStore> {
-  defaultStore ??= (async () => {
-    const server = env.KITCHEN_SQL_SERVER?.trim();
-    const database = env.KITCHEN_SQL_DATABASE?.trim();
-    if (!server || !database) throw new Error("KITCHEN_SQL_SERVER and KITCHEN_SQL_DATABASE are not set");
-    return createSqlRecipeStore(await connectEntra({ server, database }));
-  })();
-  // Don't cache a failed attempt, so a database that was asleep or briefly unreachable is retried.
-  defaultStore.catch(() => {
-    defaultStore = undefined;
-  });
-  return defaultStore;
 }

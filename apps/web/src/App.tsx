@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { checkApiHealth, loadConfig, type ApiHealth } from "./health.js";
 import { fetchMe, type Me } from "./me.js";
+import { PantryScreen } from "./PantryScreen.js";
 import { createRecipeApi } from "./recipes/api.js";
 import { Recipes } from "./recipes/Recipes.js";
 import { startSignIn, type SignIn } from "./signIn.js";
@@ -9,7 +10,7 @@ type Session =
   | { state: "loading" }
   | { state: "not-configured" }
   | { state: "signed-out"; signIn: SignIn }
-  | { state: "signed-in"; signIn: SignIn; me: Me; apiUrl: string }
+  | { state: "signed-in"; signIn: SignIn; apiUrl: string; me: Me }
   | { state: "failed"; reason: string };
 
 export function App() {
@@ -31,7 +32,7 @@ export function App() {
         if (!config.auth) return { state: "not-configured" } as const;
         const signIn = await startSignIn(config.auth);
         if (!signIn.account) return { state: "signed-out", signIn } as const;
-        return { state: "signed-in", signIn, me: await fetchMe(config.apiUrl, signIn.getToken), apiUrl: config.apiUrl } as const;
+        return { state: "signed-in", signIn, apiUrl: config.apiUrl, me: await fetchMe(config.apiUrl, signIn.getToken) } as const;
       })
       .catch((error: unknown): Session => ({ state: "failed", reason: reason(error) }))
       .then((result) => {
@@ -42,10 +43,16 @@ export function App() {
     };
   }, []);
 
+  // The API says the token has lapsed: offer to sign in again.
+  const onSignedOut = useCallback(
+    () => setSession((s) => (s.state === "signed-in" ? { ...s, me: { state: "signed-out" } } : s)),
+    [],
+  );
+
   return (
     <main>
       <h1>Kitchen</h1>
-      <SessionView session={session} />
+      <SessionView session={session} onSignedOut={onSignedOut} />
       <p role="status" data-testid="api-health">
         {health === "checking" && "API: checking…"}
         {health !== "checking" && health.state === "ok" && "API: ok"}
@@ -55,7 +62,7 @@ export function App() {
   );
 }
 
-function SessionView({ session }: { session: Session }) {
+function SessionView({ session, onSignedOut }: { session: Session; onSignedOut: () => void }) {
   switch (session.state) {
     case "loading":
       return <p>Signing in…</p>;
@@ -83,6 +90,7 @@ function SessionView({ session }: { session: Session }) {
               Signed in as {me.profile.name ?? session.signIn.account?.username} (household {me.profile.household.id}). {signOut}
             </p>
             <KitchenRecipes apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
+            <PantryScreen apiUrl={session.apiUrl} getToken={session.signIn.getToken} onSignedOut={onSignedOut} />
           </>
         );
       }

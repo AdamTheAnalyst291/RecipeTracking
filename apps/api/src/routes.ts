@@ -1,10 +1,14 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
 import { withAuth, type AuthenticatedHandler } from "./auth.js";
+import { pantryAccess, recipeStore } from "./database.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
-import { createRecipeHandlers, sqlStoreFromEnv } from "./functions/recipes.js";
+import { createRecipeHandlers } from "./functions/recipes.js";
 
-const recipes = createRecipeHandlers(() => sqlStoreFromEnv());
+const recipes = createRecipeHandlers(recipeStore);
+import { createPantryHandlers } from "./functions/pantry.js";
+
+const pantry = createPantryHandlers(pantryAccess);
 
 interface RouteBase {
   name: string;
@@ -26,6 +30,9 @@ const specs: RouteSpec[] = [
   { name: "recipes", route: "recipes", methods: ["GET", "POST"], access: "household", handler: recipes.collection },
   { name: "recipe", route: "recipes/{id}", methods: ["GET", "PUT", "DELETE"], access: "household", handler: recipes.item },
   { name: "units", route: "units", methods: ["GET"], access: "household", handler: recipes.units },
+  { name: "pantryList", route: "pantry/products", methods: ["GET"], access: "household", handler: pantry.list },
+  { name: "pantryAdd", route: "pantry/products", methods: ["POST"], access: "household", handler: pantry.add },
+  { name: "pantryUpdate", route: "pantry/products/{id}", methods: ["PATCH"], access: "household", handler: pantry.update },
 ];
 
 export const routes: (RouteBase & { access: RouteSpec["access"]; handler: HttpHandler })[] = specs.map((spec) =>

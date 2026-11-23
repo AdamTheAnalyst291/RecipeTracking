@@ -36,7 +36,15 @@ describe.skipIf(!testServer)("SQL recipe store households", () => {
     const database = await createEmptyDatabase();
     drop = database.drop;
     await runMigrations(database.pool);
+    // resolveHousehold puts everyone in the one existing household, so a second household
+    // (which the app doesn't make yet) is set up directly.
     store = createSqlRecipeStore(database.pool);
+    await store.list(householdA1); // creates the first household, with A1 in it
+    await database.pool.request().input("oid", B1).query(
+      `DECLARE @h TABLE (id UNIQUEIDENTIFIER);
+       INSERT household (name) OUTPUT inserted.id INTO @h VALUES (N'Other');
+       INSERT [user] (household_id, entra_object_id) SELECT id, @oid FROM @h;`,
+    );
   });
   afterAll(async () => {
     await drop();
