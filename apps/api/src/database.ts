@@ -1,4 +1,5 @@
-import { connectEntra, createPantry, resolveHousehold, type Pantry } from "@kitchen/db";
+import { connectEntra, createMealPlan, createPantry, resolveHousehold, type Pantry } from "@kitchen/db";
+import type { MealPlanAccess } from "./functions/mealPlan.js";
 import type { PantryAccess } from "./functions/pantry.js";
 import { createSqlRecipeStore, type RecipeStore } from "./recipes/store.js";
 
@@ -29,6 +30,13 @@ export const pantryAccess: PantryAccess = async (user) => {
   const db = await getPool();
   const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
   return { pantry: createPantry(db), householdId };
+};
+
+/** The meal plan for the signed-in member's household, against the real database. */
+export const mealPlanAccess: MealPlanAccess = async (user) => {
+  const db = await getPool();
+  const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
+  return { plan: createMealPlan(db), householdId };
 };
 
 /** The pantry across every household, for jobs that run without anyone signed in. */
