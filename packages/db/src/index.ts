@@ -23,6 +23,15 @@ export {
 } from "./mealPlan.js";
 export { resolveHousehold, type Member } from "./households.js";
 export {
+  ShoppingListError,
+  createShoppingLists,
+  type NewShoppingItem,
+  type ShoppingItem,
+  type ShoppingList,
+  type ShoppingLists,
+} from "./shoppingList.js";
+export { calculateNeeds, type Need, type PlannedLine, type StockLine } from "./shoppingNeeds.js";
+export {
   CookingError,
   createCooking,
   type CookOptions,

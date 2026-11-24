@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import "./mealPlan/mealPlan.css";
 import "./recipes/recipes.css";
+import "./shopping/shopping.css";
 import { App } from "./App.js";
 import "./styles.css";
 

@@ -1,11 +1,12 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
 import { withAuth, type AuthenticatedHandler } from "./auth.js";
-import { cookingAccess, mealPlanAccess, pantryAccess, recipeStore } from "./database.js";
+import { cookingAccess, mealPlanAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
 import { createCookingHandler } from "./functions/cooking.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
 import { createPantryHandlers } from "./functions/pantry.js";
 import { createRecipeHandlers } from "./functions/recipes.js";
+import { createShoppingListHandlers } from "./functions/shoppingList.js";
 
 const recipes = createRecipeHandlers(recipeStore);
 
@@ -15,6 +16,7 @@ const cooked = createCookingHandler(cookingAccess);
 import { createMealPlanHandlers } from "./functions/mealPlan.js";
 
 const mealPlan = createMealPlanHandlers(mealPlanAccess);
+const shopping = createShoppingListHandlers(shoppingListAccess);
 
 interface RouteBase {
   name: string;
@@ -42,6 +44,9 @@ const specs: RouteSpec[] = [
   { name: "pantryUpdate", route: "pantry/products/{id}", methods: ["PATCH"], access: "household", handler: pantry.update },
   { name: "mealPlan", route: "meal-plan", methods: ["GET", "POST"], access: "household", handler: mealPlan.collection },
   { name: "mealPlanItem", route: "meal-plan/{id}", methods: ["PATCH", "DELETE"], access: "household", handler: mealPlan.item },
+  { name: "shoppingList", route: "shopping-list", methods: ["GET", "POST"], access: "household", handler: shopping.collection },
+  { name: "shoppingListItems", route: "shopping-list/{id}/items", methods: ["POST"], access: "household", handler: shopping.items },
+  { name: "shoppingListItem", route: "shopping-list/{id}/items/{itemId}", methods: ["PATCH", "DELETE"], access: "household", handler: shopping.item },
 ];
 
 export const routes: (RouteBase & { access: RouteSpec["access"]; handler: HttpHandler })[] = specs.map((spec) =>
