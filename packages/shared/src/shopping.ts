@@ -38,8 +38,3 @@ export interface NewShoppingItem {
   quantity?: number;
   unitId?: string;
 }
-
-/** Body of `PATCH /api/shopping-list/{id}/items/{itemId}`. */
-export interface ShoppingItemChange {
-  checked: boolean;
-}

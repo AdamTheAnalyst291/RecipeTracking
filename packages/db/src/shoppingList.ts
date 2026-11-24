@@ -197,7 +197,7 @@ export function createShoppingLists(pool: mssql.ConnectionPool): ShoppingLists {
         const needs = calculateNeeds(planned, stock, convert);
 
         const previous = (
-          await request().query("SELECT TOP 1 id FROM shopping_list WHERE household_id = @h ORDER BY created_at DESC, id DESC")
+          await request().query("SELECT TOP 1 id FROM shopping_list WITH (UPDLOCK, HOLDLOCK) WHERE household_id = @h ORDER BY created_at DESC, id DESC")
         ).recordset[0] as { id: string } | undefined;
 
         const list = (

@@ -65,6 +65,12 @@ describe("calculateNeeds", () => {
     expect(summary(needs)).toEqual(["Onion: 2 ea"]);
   });
 
+  it("takes stock counted in each off a line written with no unit", () => {
+    const needs = calculateNeeds([line("Onion", 2, null, 1, 1), line("Egg", 6, null, 1, 1)], [stock("Onion", 3, EA), stock("Egg", 4, EA)], convert);
+    expect(summary(needs)).toEqual(["Egg: 2"]);
+    expect(calculateNeeds([line("Onion", 2, null, 1, 1)], [stock("Onion", 500, G)], convert)).toHaveLength(1);
+  });
+
   it("uses stock once across lines of one food, not once per recipe", () => {
     const needs = calculateNeeds([line("Flour", 300, G, 1, 1), line("Flour", 300, G, 1, 1)], [stock("Flour", 500, G)], convert);
     expect(summary(needs)).toEqual(["Flour: 100 g"]);

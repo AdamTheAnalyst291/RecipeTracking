@@ -89,11 +89,10 @@ export function calculateNeeds(lines: PlannedLine[], stock: StockLine[], convert
     }
 
     let remaining = round4(group.quantity);
-    if (group.unitId !== null) {
-      for (const s of foodStock) {
-        const f = same(s.unitId, group.unitId) ? 1 : convert(s.unitId, group.unitId);
-        if (f !== undefined) remaining = round4(remaining - s.quantity * f);
-      }
+    for (const s of foodStock) {
+      // A line with no unit ("2 onions") is a count, so only stock counted in each offsets it.
+      const f = group.unitId === null ? (s.unitKind === "count" ? 1 : undefined) : same(s.unitId, group.unitId) ? 1 : convert(s.unitId, group.unitId);
+      if (f !== undefined) remaining = round4(remaining - s.quantity * f);
     }
     if (remaining <= 0) continue;
     needs.push({ foodId: group.foodId, food: group.food, quantity: remaining, unitId: group.unitId, unit: group.unit });
