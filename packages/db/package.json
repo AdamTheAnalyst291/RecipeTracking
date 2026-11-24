@@ -21,7 +21,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "migrate": "node dist/cli.js"
+    "migrate": "node dist/cli.js",
+    "import:mealie": "pnpm run build && node dist/import-mealie.js"
   },
   "dependencies": {
     "mssql": "12.7.16"

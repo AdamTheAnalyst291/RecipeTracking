@@ -1,0 +1,63 @@
+{
+  "foods": [
+    { "id": "f-flour", "name": "Flour" },
+    { "id": "f-onion", "name": "Onion" },
+    { "id": "f-lentils", "name": "Red Lentils" },
+    { "id": "f-saffron", "name": "Saffron" }
+  ],
+  "recipes": [
+    {
+      "id": "r-soup",
+      "slug": "lentil-soup",
+      "name": "Lentil Soup",
+      "recipeServings": 4,
+      "totalTime": "1 Hour 15 Minutes",
+      "orgURL": "https://www.example-cooking.test/lentil-soup",
+      "tags": [{ "name": "Soup" }, { "name": "Vegetarian" }],
+      "recipeCategory": [{ "name": "Dinner" }, { "name": "soup" }],
+      "recipeIngredient": [
+        { "quantity": 1.5, "unit": { "name": "cup", "abbreviation": "c" }, "food": { "name": "Red Lentils" }, "note": "rinsed" },
+        { "quantity": 1, "unit": null, "food": { "name": "Onion" }, "note": "diced" },
+        { "quantity": 2, "unit": { "name": "clove", "abbreviation": "" }, "food": { "name": "Garlic" }, "note": "" },
+        { "quantity": 0, "unit": null, "food": null, "note": "", "originalText": "salt to taste" }
+      ],
+      "recipeInstructions": [{ "text": "Sweat the onion." }, { "text": "  " }, { "text": "Add lentils and simmer." }]
+    },
+    {
+      "id": "r-bread",
+      "slug": "easy-bread",
+      "name": "Easy Bread",
+      "recipeYield": "2 loaves",
+      "prepTime": "20 minutes",
+      "performTime": "40 minutes",
+      "tags": [],
+      "recipeCategory": [],
+      "recipeIngredient": [
+        { "quantity": 500, "unit": { "name": "Gram", "abbreviation": "g" }, "food": { "name": "flour" }, "note": "" },
+        { "quantity": 2, "unit": { "name": "tablespoons", "abbreviation": "tbsp" }, "food": { "name": "Olive Oil" }, "note": "" }
+      ],
+      "recipeInstructions": [{ "text": "Mix." }, { "text": "Bake." }]
+    },
+    {
+      "id": "r-plain",
+      "slug": "plain-rice",
+      "name": "Plain Rice",
+      "tags": [],
+      "recipeCategory": [],
+      "recipeIngredient": [],
+      "recipeInstructions": []
+    },
+    {
+      "id": "r-broken",
+      "slug": "broken-recipe",
+      "broken": true
+    }
+  ],
+  "mealPlans": [
+    { "id": "m1", "date": "2026-11-23", "entryType": "dinner", "recipeId": "r-soup" },
+    { "id": "m2", "date": "2026-11-23", "entryType": "breakfast", "recipeId": "r-plain" },
+    { "id": "m3", "date": "2026-11-24", "entryType": "side", "recipeId": "r-bread" },
+    { "id": "m4", "date": "2026-11-25", "entryType": "dinner", "recipeId": null, "title": "Takeout night" },
+    { "id": "m5", "date": "2026-11-26", "entryType": "dinner", "recipeId": "r-broken" }
+  ]
+}
