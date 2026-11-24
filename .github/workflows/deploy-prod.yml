@@ -6,7 +6,7 @@ name: Deploy Prod
 #
 # Every Prod deploy waits for Adam's approval: the only job that signs in to Azure runs
 # in the `prod` GitHub Environment, which has Adam as its required reviewer and allows
-# main (and `v*` tags) only. The Prod deploy identity trusts that environment and
+# main only (plus `v*` tags once that rule is added; infra/README.md, "Deploying to Prod"). The Prod deploy identity trusts that environment and
 # nothing else, so no other workflow, branch or fork can sign in as it. Apply, migrate
 # and deploy share that one job, so one approval covers the whole deploy; each job that
 # names a protected environment would ask again.
@@ -37,6 +37,24 @@ jobs:
   build:
     name: Build once
     runs-on: ubuntu-latest
+    # Unlike Deploy Dev, Prod's build runs the database tests too (packages/db only lets
+    # Deploy Dev skip them), against a throwaway SQL Server that lives only as long as
+    # this job, the same one the pull request workflow uses.
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-CU20-ubuntu-22.04
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Kitchen_Test_1!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Kitchen_Test_1!' -Q 'SELECT 1'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      KITCHEN_TEST_SQL: Server=localhost,1433;User Id=sa;Password=Kitchen_Test_1!;TrustServerCertificate=true
     outputs:
       artifact: ${{ steps.artifact.outputs.name }}
     steps:
@@ -78,7 +96,7 @@ jobs:
     name: Deploy to Prod
     needs: build
     # Belt and braces: the build job already refused anything else, and the prod
-    # environment's own branch rule allows only main and v* tags.
+    # environment's own rule allows only main (and v* tags, if added).
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: prod # waits here for Adam's approval

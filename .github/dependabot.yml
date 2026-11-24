@@ -27,9 +27,10 @@ updates:
       - "/infra/bootstrap"
       - "/infra/modules/environment"
       - "/infra/environments/dev"
+      - "/infra/environments/prod"
     schedule:
       interval: "monthly"
-    # One PR for all three folders, so a provider bump never lands in some of them only
+    # One PR for every Terraform folder, so a provider bump never lands in some of them only
     # (azurerm 5.14 split across #30, #32 and #33 broke terraform init on main).
     groups:
       terraform:

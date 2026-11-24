@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Applies the migrations. Used by the Deploy Dev workflow:
+// Applies the migrations. Used by the Deploy Dev and Deploy Prod workflows:
 //   SQL_SERVER=<server>.database.windows.net SQL_DATABASE=sqldb-kitchen-app node dist/cli.js
 import { connectEntra } from "./connect.js";
 import { runMigrations } from "./migrate.js";
