@@ -1,0 +1,85 @@
+/* Mobile-first: one column, big tap targets; wider screens just get a centred column. */
+.meal-plan {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 40rem;
+  margin: 1.5rem auto 0;
+}
+.meal-plan button,
+.meal-plan input,
+.meal-plan select {
+  min-height: 2.75rem;
+  font: inherit;
+}
+.meal-plan-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.meal-plan-nav {
+  display: flex;
+  gap: 0.5rem;
+}
+.meal-day {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 0.5rem;
+}
+.meal-day-today {
+  border-color: #1a6;
+  border-width: 2px;
+}
+.meal-day h3 {
+  margin: 0;
+}
+.meal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.meal-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  align-items: center;
+}
+.meal-recipe {
+  flex: 1 1 8rem;
+}
+.meal-servings,
+.meal-empty {
+  color: #555;
+  margin: 0;
+}
+.meal-actions {
+  display: flex;
+  gap: 0.25rem;
+  flex: 1 1 100%;
+}
+.meal-form {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.meal-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.meal-form-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+.meal-plan-problem {
+  color: #b00020;
+}

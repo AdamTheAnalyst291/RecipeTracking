@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { checkApiHealth, loadConfig, type ApiHealth } from "./health.js";
 import { fetchMe, type Me } from "./me.js";
+import { createMealPlanApi } from "./mealPlan/api.js";
+import { MealPlan } from "./mealPlan/MealPlan.js";
 import { PantryScreen } from "./PantryScreen.js";
 import { createRecipeApi } from "./recipes/api.js";
 import { Recipes } from "./recipes/Recipes.js";
@@ -89,6 +91,7 @@ function SessionView({ session, onSignedOut }: { session: Session; onSignedOut: 
             <p>
               Signed in as {me.profile.name ?? session.signIn.account?.username} (household {me.profile.household.id}). {signOut}
             </p>
+            <KitchenMealPlan apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
             <KitchenRecipes apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
             <PantryScreen apiUrl={session.apiUrl} getToken={session.signIn.getToken} onSignedOut={onSignedOut} />
           </>
@@ -115,6 +118,12 @@ function SessionView({ session, onSignedOut }: { session: Session; onSignedOut: 
       );
     }
   }
+}
+
+function KitchenMealPlan({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
+  const api = useMemo(() => createMealPlanApi(apiUrl, getToken), [apiUrl, getToken]);
+  const recipes = useMemo(() => createRecipeApi(apiUrl, getToken), [apiUrl, getToken]);
+  return <MealPlan api={api} recipes={recipes} />;
 }
 
 function KitchenRecipes({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
