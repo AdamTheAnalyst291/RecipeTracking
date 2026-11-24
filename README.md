@@ -27,6 +27,28 @@ Run it against **Dev first**, read the report, then run it against Prod at switc
 5. **Read the report.** It lists how many foods, recipes and meal plan entries were new, updated or unchanged, then anything it couldn't carry over exactly: recipes Mealie wouldn't return, units that aren't in the unit table (kept in the ingredient's note), ingredient lines with no food (the whole line became a food), meal plan notes that aren't recipes (skipped), and sides/desserts (planned as dinner). Fix those by hand in the app if you care, or in Mealie and run again.
 6. Clear the token afterwards: `Remove-Item Env:MEALIE_TOKEN`, and delete it in Mealie once switch-over is done.
 
+## Importing from Grocy (one time, card K5)
+
+`pnpm --filter @kitchen/db import:grocy` copies your Grocy pantry into the kitchen database: each active product (matched by name to a food you already have, or a new food), its current stock in its unit, a staple flag (Grocy's minimum stock above 0) and its latest price with the date it was bought. It only reads Grocy (GET requests to the Grocy server you name, enforced in code and tested) and never deletes anything. Grocy's price is per stock unit, so it is scaled by the size Grocy buys the product in (its purchase-to-stock factor, or 1) to give a price per package. It is safe to run again: each Grocy product is remembered (table `import_source`), so a second run skips what hasn't changed, brings stock, staple flag and price up to date for what has, and doesn't duplicate. Do your pantry changes in Grocy until switch-over; a rerun overwrites the stock and price of a changed product.
+
+Run it against **Dev first**, read the report, then run it against Prod at switch-over (card S3). Run it after the Mealie import so the foods your recipes use are matched rather than made twice.
+
+1. **Grocy API key.** Start Grocy (`.\legacy\mealie.cmd start`), open http://localhost:9283, click the user menu (top right) → **Manage API keys** → **Add**, and copy the key. Don't save it in a file in the repo.
+2. **Sign in to Azure** (no database password): `az login`, as in the Mealie steps above. The database must have the latest migrations (a deploy applies them) and your household must exist.
+3. **Set the environment** (PowerShell):
+
+   ```powershell
+   $env:GROCY_URL = "http://localhost:9283"
+   $env:GROCY_API_KEY = "<the key from step 1>"
+   $env:SQL_SERVER = "<server>.database.windows.net"   # Dev's SQL server; Prod's at switch-over
+   $env:SQL_DATABASE = "<database name>"
+   ```
+
+   Only if the database has more than one household, also set `$env:KITCHEN_HOUSEHOLD_ID`.
+4. **Run it** from the repo root: `pnpm --filter @kitchen/db import:grocy`.
+5. **Read the report.** It lists how many products were new, updated or unchanged and how many foods were new or matched, then anything it couldn't carry over exactly: inactive products (skipped), units that aren't in the unit table (counted in "each"), products with no price, a price it couldn't use, and prices Grocy wouldn't return. Fix those by hand in the app, or in Grocy and run again.
+6. Clear the key afterwards: `Remove-Item Env:GROCY_API_KEY`, and delete it in Grocy once switch-over is done.
+
 ---
 
 # mealie-home (legacy laptop setup)
