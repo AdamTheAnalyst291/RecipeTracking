@@ -1,0 +1,89 @@
+/* Mobile-first: one column, big tap targets for ticking things off in the store. */
+.shopping {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 40rem;
+  margin: 1.5rem auto 0;
+}
+.shopping button,
+.shopping input[type="text"],
+.shopping input:not([type]) {
+  min-height: 2.75rem;
+  font: inherit;
+}
+.shopping-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+.shopping-header h2,
+.shopping h3 {
+  margin: 0;
+}
+.shopping-range {
+  margin: 0;
+  opacity: 0.75;
+}
+.shopping-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.shopping-item {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  border: 1px solid #8884;
+  border-radius: 0.5rem;
+}
+.shopping-check {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.5rem;
+  padding: 0 0.75rem;
+  cursor: pointer;
+}
+.shopping-check input[type="checkbox"] {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: none;
+}
+.shopping-name {
+  flex: 1;
+  font-size: 1.1rem;
+}
+.shopping-amount {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.shopping-item > button {
+  margin: 0.375rem 0.5rem 0.375rem 0;
+}
+.shopping-item-checked .shopping-name,
+.shopping-item-checked .shopping-amount {
+  text-decoration: line-through;
+  opacity: 0.55;
+}
+.shopping-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: end;
+}
+.shopping-add label {
+  display: grid;
+  gap: 0.25rem;
+  flex: 1 1 12rem;
+}
+.shopping-problem {
+  color: #b00020;
+  margin: 0;
+}

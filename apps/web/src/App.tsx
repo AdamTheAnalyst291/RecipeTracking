@@ -6,6 +6,8 @@ import { MealPlan } from "./mealPlan/MealPlan.js";
 import { PantryScreen } from "./PantryScreen.js";
 import { createRecipeApi } from "./recipes/api.js";
 import { Recipes } from "./recipes/Recipes.js";
+import { createShoppingApi } from "./shopping/api.js";
+import { Shopping } from "./shopping/Shopping.js";
 import { startSignIn, type SignIn } from "./signIn.js";
 
 type Session =
@@ -92,6 +94,7 @@ function SessionView({ session, onSignedOut }: { session: Session; onSignedOut: 
               Signed in as {me.profile.name ?? session.signIn.account?.username} (household {me.profile.household.id}). {signOut}
             </p>
             <KitchenMealPlan apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
+            <KitchenShopping apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
             <KitchenRecipes apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
             <PantryScreen apiUrl={session.apiUrl} getToken={session.signIn.getToken} onSignedOut={onSignedOut} />
           </>
@@ -129,4 +132,9 @@ function KitchenMealPlan({ apiUrl, getToken }: { apiUrl: string; getToken: () =>
 function KitchenRecipes({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
   const api = useMemo(() => createRecipeApi(apiUrl, getToken), [apiUrl, getToken]);
   return <Recipes api={api} />;
+}
+
+function KitchenShopping({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
+  const api = useMemo(() => createShoppingApi(apiUrl, getToken), [apiUrl, getToken]);
+  return <Shopping api={api} />;
 }

@@ -31,7 +31,7 @@ describe.skipIf(!testServer)("runMigrations", () => {
       "SELECT name FROM sys.tables WHERE name <> 'schema_migration' ORDER BY name",
     );
     expect(tables.recordset.map((r) => r.name)).toEqual(
-      expect.arrayContaining(["household", "user", "food", "unit", "unit_conversion"]),
+      expect.arrayContaining(["household", "user", "food", "unit", "unit_conversion", "shopping_list", "shopping_list_item"]),
     );
   });
 

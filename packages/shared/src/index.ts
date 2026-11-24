@@ -54,3 +54,4 @@ export interface PantryProductChange {
 export interface ApiError {
   error: string;
 }
+export * from "./shopping.js";
