@@ -34,11 +34,12 @@ export function createGrocyClient({ baseUrl, apiKey, fetch: doFetch = fetch }: G
   return {
     async get(path) {
       if (!path.startsWith("/")) throw new Error(`Grocy path must start with /: ${path}`);
-      const target = new URL(path, root);
+      const target = new URL(root.pathname.replace(/\/$/, "") + path, root); // keeps a sub-path like /grocy
       // A path like //other-host must never carry the key somewhere else.
       if (target.origin !== root.origin) throw new Error(`Grocy path leaves the Grocy server: ${path}`);
       const response = await doFetch(target.toString(), {
         method: "GET",
+        redirect: "error", // a redirect must never carry the key to another host
         headers: { "GROCY-API-KEY": apiKey, Accept: "application/json" },
       });
       if (!response.ok) throw new GrocyHttpError(response.status, path);

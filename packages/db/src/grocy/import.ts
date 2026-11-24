@@ -137,8 +137,8 @@ export async function importGrocy(pool: mssql.ConnectionPool, householdId: strin
     const print = fingerprint({ unit: product.unit, stock: product.stock, staple: product.staple, price: product.price });
     const foodsBefore = { ...report.foods };
     const tx = new mssql.Transaction(pool);
-    await tx.begin();
     try {
+      await tx.begin();
       const link = await h(tx)
         .input("ext", mssql.NVarChar(200), product.grocyId)
         .query("SELECT local_id, fingerprint FROM import_source WHERE household_id = @h AND source = 'grocy' AND kind = 'product' AND external_id = @ext");

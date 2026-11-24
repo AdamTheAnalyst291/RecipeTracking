@@ -27,6 +27,18 @@ describe("the Grocy client", () => {
     expect(requests).toHaveLength(0);
   });
 
+  it("never follows a redirect, so the key can't be sent to another host", async () => {
+    const { fetch, requests } = fakeGrocy();
+    await readGrocy(createGrocyClient({ ...base, fetch }));
+    expect(requests.every((r) => r.redirect === "error")).toBe(true);
+  });
+
+  it("keeps a sub-path in the Grocy URL", async () => {
+    const { fetch, requests } = fakeGrocy();
+    await createGrocyClient({ baseUrl: "http://grocy.test/grocy/", apiKey: "k", fetch }).get("/api/stock").catch(() => undefined);
+    expect(requests[0]?.url).toBe("http://grocy.test/grocy/api/stock");
+  });
+
   it("refuses a URL that isn't http(s)", () => {
     expect(() => createGrocyClient({ baseUrl: "file:///etc/passwd", apiKey: "k" })).toThrow();
   });

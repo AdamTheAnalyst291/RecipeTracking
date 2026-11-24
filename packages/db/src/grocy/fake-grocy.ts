@@ -16,6 +16,7 @@ export interface RecordedRequest {
   method: string | undefined;
   url: string;
   headers: Record<string, string>;
+  redirect: RequestRedirect | undefined;
   body: unknown;
 }
 
@@ -28,7 +29,7 @@ export function fakeGrocy(options: { fixture?: GrocyFixture } = {}) {
 
   const fetchFake = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(String(input));
-    requests.push({ method: init?.method, url: url.toString(), headers: (init?.headers ?? {}) as Record<string, string>, body: init?.body });
+    requests.push({ method: init?.method, url: url.toString(), headers: (init?.headers ?? {}) as Record<string, string>, redirect: init?.redirect, body: init?.body });
     if (init?.method !== "GET") return json({ error_message: "read-only in tests" }, 405);
     if (url.pathname === "/api/objects/quantity_units") return json(data.quantityUnits);
     if (url.pathname === "/api/objects/products") return json(data.products);
