@@ -1,5 +1,5 @@
 import { MEAL_SLOTS, type MealSlot, type PlannedMeal, type RecipeSummary } from "@kitchen/shared";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { RecipeApi } from "../recipes/api.js";
 import type { MealPlanApi } from "./api.js";
 import { addDays, dayLabel, localToday, weekDays, weekStart } from "./dates.js";
@@ -27,6 +27,9 @@ export function MealPlan({ api, recipes, today = localToday() }: Props) {
   const [problem, setProblem] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [busy, setBusy] = useState(false);
+  // The week on screen now, so a change that finishes after the person moved on can't overwrite it.
+  const shownStart = useRef(start);
+  shownStart.current = start;
 
   useEffect(() => {
     let cancelled = false;
@@ -61,7 +64,9 @@ export function MealPlan({ api, recipes, today = localToday() }: Props) {
       setBusy(true);
       try {
         await run();
-        setMeals(await api.week(start));
+        const reloaded = await api.week(start);
+        if (shownStart.current !== start) return;
+        setMeals(reloaded);
         setProblem(null);
         setEditing(null);
       } catch (error) {
