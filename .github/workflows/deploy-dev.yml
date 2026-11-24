@@ -1,8 +1,9 @@
 name: Deploy Dev
 
 # Every merge to main applies Dev's Terraform, builds the web app and API once, keeps
-# that build as an artifact, and deploys it to Dev (ADR-25). A later Prod deploy can
-# download the same artifact instead of rebuilding.
+# that build as an artifact, and deploys it to Dev (ADR-25). Deploy Prod builds the
+# same commit with the same steps (.github/actions/build-kitchen) and deploys it with
+# the same scripts (infra/scripts).
 #
 # Azure jobs sign in with OIDC as the Dev deploy identity, which trusts only this
 # repository's `dev` GitHub Environment. No secret is stored in GitHub; the Static Web
@@ -19,6 +20,8 @@ on:
       - packages/**
       - infra/environments/**
       - infra/modules/**
+      - infra/scripts/**
+      - .github/actions/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -32,6 +35,8 @@ on:
       - packages/**
       - infra/environments/**
       - infra/modules/**
+      - infra/scripts/**
+      - .github/actions/**
       - package.json
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
@@ -63,40 +68,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version-file: package.json
-          cache: pnpm
-
-      - run: pnpm install --frozen-lockfile
-
-      - run: pnpm exec turbo run build test --filter=@kitchen/web --filter=@kitchen/api
-
-      # The API ships as a zip holding its compiled code and production dependencies only.
-      # A flat node_modules (no symlinks) keeps the zip self-contained.
-      - name: Package the API
-        run: |
-          pnpm --filter @kitchen/api deploy --prod --config.node-linker=hoisted build/api
-          (cd build/api && zip -qr ../api.zip . -x "node_modules/.pnpm/*")
-
-      # The web app is plain static files; each deploy writes its own config.json.
-      - name: Collect the web app
-        run: cp -r apps/web/dist build/web
-
-      # Catches a broken package on the pull request instead of on Dev.
-      - name: Check the packages
-        run: |
-          set -euo pipefail
-          listing=$(unzip -Z1 build/api.zip)
-          for f in host.json package.json dist/index.js node_modules/@azure/functions/package.json node_modules/@kitchen/shared/package.json; do
-            grep -qxF "$f" <<< "$listing" || { echo "::error::api.zip has no $f"; exit 1; }
-          done
-          for f in index.html staticwebapp.config.json; do
-            [ -f "build/web/$f" ] || { echo "::error::The web build has no $f"; exit 1; }
-          done
-          echo "Packages look complete: api.zip is $(du -h build/api.zip | cut -f1)"
+      # Build, test, package and check both apps (shared with Deploy Prod).
+      - uses: ./.github/actions/build-kitchen
 
       - id: artifact
         run: echo "name=kitchen-build-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
@@ -250,6 +223,11 @@ jobs:
             [ -n "${!v}" ] || { echo "::error::$v is empty; check the Apply job's outputs"; exit 1; }
           done
 
+      # The deploy and check scripts, shared with Deploy Prod.
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: infra/scripts
+
       - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.build.outputs.artifact }}
@@ -261,71 +239,19 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # `az functionapp deploy` and `config-zip` don't work for Flex Consumption (Setlist
-      # found the first gets HTTP 415 and the second fails its host-key health check), so
-      # post the zip to the publish endpoint directly (it must be application/zip), then
-      # wait for the deployment to finish.
+      # Posts the zip to the Flex Consumption publish endpoint, retrying while a new
+      # app's endpoint refuses it, then waits for the deployment to finish.
       - name: Deploy the API
-        run: |
-          set -euo pipefail
-          scm="https://$FUNCTION_APP.scm.azurewebsites.net"
-          token=$(az account get-access-token --query accessToken -o tsv)
-          echo "::add-mask::$token"
-          headers=$(curl -sS -f -D - -o /dev/null -X POST \
-            -H "Authorization: Bearer $token" -H "Content-Type: application/zip" \
-            --data-binary @build/api.zip "$scm/api/publish?type=zip")
-          location=$(printf '%s\n' "$headers" | tr -d '\r' | awk -F': ' 'tolower($1)=="location" {print $2}')
-          [ -n "$location" ] || { echo "::error::The publish endpoint returned no deployment to follow"; exit 1; }
-          for attempt in $(seq 1 36); do
-            status=$(curl -sS -f -H "Authorization: Bearer $token" "$location" | jq -r '.status')
-            echo "Deployment status: $status (attempt $attempt)"
-            case "$status" in
-              4) exit 0 ;;                              # succeeded
-              3) echo "::error::The API deployment failed"; exit 1 ;;
-            esac
-            sleep 10
-          done
-          echo "::error::The API deployment did not finish in time"; exit 1
+        env:
+          API_ZIP: build/api.zip
+        run: infra/scripts/deploy-api.sh
 
       - name: Deploy the web app
-        run: |
-          set -euo pipefail
-          # An empty clientId leaves sign-in off until the app registration exists.
-          jq -n --arg apiUrl "$API_URL" --arg clientId "$AUTH_CLIENT_ID" --arg tenantId "$TENANT_ID" \
-            '{apiUrl: $apiUrl, auth: {clientId: $clientId, tenantId: $tenantId}}' > build/web/config.json
-          token=$(az staticwebapp secrets list -g "$RESOURCE_GROUP" -n "$SWA_NAME" --query properties.apiKey -o tsv)
-          echo "::add-mask::$token"
-          SWA_CLI_DEPLOYMENT_TOKEN="$token" npx --yes @azure/static-web-apps-cli@2.1.0 deploy build/web --env production
+        env:
+          WEB_DIR: build/web
+        run: infra/scripts/deploy-web.sh
 
       - name: Check that Dev works
-        run: |
-          set -uo pipefail
-          wait_for() { # wait_for <url> <text>: retry while the new version starts up
-            for attempt in $(seq 1 24); do
-              body=$(curl -fsS --max-time 20 "$1" || true)
-              if grep -qF -- "$2" <<< "$body"; then echo "OK: $1"; return 0; fi
-              echo "Waiting for $1 (attempt $attempt)"; sleep 10
-            done
-            echo "::error::$1 did not return the expected content"; return 1
-          }
-          wait_for "$API_URL/api/health" '"status":"ok"' || exit 1
-          # Sign-in is enforced: no token, no entry.
-          me=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "$API_URL/api/me")
-          echo "GET /api/me without a token: HTTP $me"
-          case "$me" in
-            401) ;;
-            500)
-              if [ -n "$AUTH_CLIENT_ID" ]; then echo "::error::The API's sign-in settings are broken (HTTP 500 on /api/me). Is the household-members secret in Key Vault?"; exit 1; fi
-              echo "::warning::Sign-in isn't set up yet: set KITCHEN_AUTH_CLIENT_ID and the household-members secret (infra/README.md, \"Sign-in\")" ;;
-            *) echo "::error::/api/me without a token should be 401, got $me"; exit 1 ;;
-          esac
-          wait_for "$WEB_URL/config.json" "$API_URL" || exit 1
-          wait_for "$WEB_URL/" 'id="root"' || exit 1
-          cors=$(curl -sSI -H "Origin: $WEB_URL" "$API_URL/api/health" | tr -d '\r' | grep -i '^access-control-allow-origin' || true)
-          echo "CORS header: ${cors:-none}"
-          [ -n "$cors" ] || { echo "::error::The API does not allow the web app's origin"; exit 1; }
-          {
-            echo "### Dev is up"
-            echo "- Web app: $WEB_URL"
-            echo "- API: $API_URL/api/health"
-          } >> "$GITHUB_STEP_SUMMARY"
+        env:
+          ENV_LABEL: Dev
+        run: infra/scripts/check-deploy.sh

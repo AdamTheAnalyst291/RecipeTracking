@@ -1,0 +1,113 @@
+# Prod. GitHub Actions applies this only in the Deploy Prod workflow, after Adam
+# approves the run in the `prod` GitHub Environment, signed in as the Prod deploy identity.
+
+terraform {
+  required_version = ">= 1.17.0, < 2.0.0"
+
+  required_providers {
+    azurerm = {
+      source  = "hashicorp/azurerm"
+      version = "~> 4.81"
+    }
+    azapi = {
+      source  = "azure/azapi"
+      version = "~> 2.14"
+    }
+  }
+
+  # Partial configuration: the workflow passes the storage account with -backend-config,
+  # from the TF_STATE_* repository variables. State is read with Entra ID, not a key.
+  backend "azurerm" {
+    container_name   = "tfstate-prod"
+    key              = "prod.tfstate"
+    use_azuread_auth = true
+  }
+}
+
+# Credentials come from ARM_* environment variables (OIDC in GitHub Actions).
+provider "azurerm" {
+  features {
+    key_vault {
+      # Purging needs a subscription-wide permission the deploy identity doesn't have.
+      # A deleted vault stays soft-deleted for 7 days, then Azure purges it.
+      purge_soft_delete_on_destroy = false
+    }
+  }
+
+  # The deploy identity can't register providers at subscription scope;
+  # infra/bootstrap registers the ones the kitchen app needs.
+  resource_provider_registrations = "none"
+  storage_use_azuread             = true
+}
+
+provider "azapi" {}
+
+variable "deploy_identity_object_id" {
+  description = "Object ID of the Prod deploy identity's service principal (GitHub variable AZURE_PRINCIPAL_ID). It administers the SQL server so the pipeline can run migrations."
+  type        = string
+}
+
+variable "auth_client_id" {
+  description = "Client ID of the kitchen-prod app registration (GitHub variable KITCHEN_AUTH_CLIENT_ID on the prod environment). Empty until it exists."
+  type        = string
+  default     = ""
+}
+
+module "environment" {
+  source = "../../modules/environment"
+
+  environment         = "prod"
+  resource_group_name = "rg-kitchen-prod"
+  location            = "centralus"
+
+  sql_admin = {
+    login_username = "kitchen-github-prod"
+    object_id      = var.deploy_identity_object_id
+  }
+
+  auth_client_id = var.auth_client_id
+
+  # Prod's vault holds the Plaid Production secret. Once on, this can't be turned off,
+  # and a deleted vault can't be purged before its 7-day retention ends.
+  key_vault_purge_protection = true
+}
+
+output "web_url" {
+  value = module.environment.web_url
+}
+
+output "api_url" {
+  value = module.environment.api_url
+}
+
+output "static_web_app_name" {
+  value = module.environment.static_web_app_name
+}
+
+output "function_app_name" {
+  value = module.environment.function_app_name
+}
+
+output "function_app_principal_id" {
+  value = module.environment.function_app_principal_id
+}
+
+output "key_vault_name" {
+  value = module.environment.key_vault_name
+}
+
+output "sql_server_fqdn" {
+  value = module.environment.sql_server_fqdn
+}
+
+output "app_database_name" {
+  value = module.environment.app_database_name
+}
+
+output "auth_client_id" {
+  value = module.environment.auth_client_id
+}
+
+output "tenant_id" {
+  value = module.environment.tenant_id
+}

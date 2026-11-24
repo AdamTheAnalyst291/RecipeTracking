@@ -1,0 +1,48 @@
+name: Build the kitchen app
+description: >-
+  Builds and tests the web app and API, packages them exactly as a deploy needs them
+  (build/api.zip and build/web), and checks the packages. Shared by Deploy Dev and
+  Deploy Prod so both ship the same kind of build. Needs a checkout first.
+
+runs:
+  using: composite
+  steps:
+    - uses: pnpm/action-setup@v6
+
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: package.json
+        cache: pnpm
+
+    - shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - shell: bash
+      run: pnpm exec turbo run build test --filter=@kitchen/web --filter=@kitchen/api
+
+    # The API ships as a zip holding its compiled code and production dependencies only.
+    # A flat node_modules (no symlinks) keeps the zip self-contained.
+    - name: Package the API
+      shell: bash
+      run: |
+        pnpm --filter @kitchen/api deploy --prod --config.node-linker=hoisted build/api
+        (cd build/api && zip -qr ../api.zip . -x "node_modules/.pnpm/*")
+
+    # The web app is plain static files; each deploy writes its own config.json.
+    - name: Collect the web app
+      shell: bash
+      run: cp -r apps/web/dist build/web
+
+    # Catches a broken package before it reaches an environment.
+    - name: Check the packages
+      shell: bash
+      run: |
+        set -euo pipefail
+        listing=$(unzip -Z1 build/api.zip)
+        for f in host.json package.json dist/index.js node_modules/@azure/functions/package.json node_modules/@kitchen/shared/package.json; do
+          grep -qxF "$f" <<< "$listing" || { echo "::error::api.zip has no $f"; exit 1; }
+        done
+        for f in index.html staticwebapp.config.json; do
+          [ -f "build/web/$f" ] || { echo "::error::The web build has no $f"; exit 1; }
+        done
+        echo "Packages look complete: api.zip is $(du -h build/api.zip | cut -f1)"
