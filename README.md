@@ -5,6 +5,28 @@ Two halves live in this repo while the move happens (ADR-25):
 - **The new kitchen app** (`apps/`, `packages/`): a pnpm + turbo monorepo that will replace Mealie, Grocy and Actual Budget. `apps/web` is React + Vite, `apps/api` is Azure Functions on Node 24, and `packages/shared` holds types both use. From the repo root: `pnpm install`, then `pnpm build`, `pnpm lint`, `pnpm typecheck`, `pnpm test`. CI (`.github/workflows/pull-request.yml`) runs the same on each pull request. Sign-in is Microsoft Entra, for household members only; `infra/README.md` ("Sign-in") has the one-time setup. Locally, `apps/web/public/config.json` leaves sign-in off; to try it against Dev, fill in its `auth` block with Dev's client ID and tenant ID, and don't commit them.
 - **The legacy laptop setup** (`legacy/`): everything below. It is still the live system until switch-over (card S3), then it is deleted. Run its commands from the repo root as `.\legacy\mealie.cmd <command>`.
 
+## Importing from Mealie (one time, card K3)
+
+`pnpm --filter @kitchen/db import:mealie` copies your foods, recipes (name, servings, time, source, tags, ingredients, steps) and meal plan from the running Mealie into the kitchen database. It only reads Mealie (GET requests, enforced in code and tested) and never deletes anything. It is safe to run again: each Mealie item is remembered (table `import_source`), so a second run skips what hasn't changed, updates what changed in Mealie and doesn't duplicate. Edits you made in the kitchen app to an unchanged recipe are kept.
+
+Run it against **Dev first**, read the report, then run it against Prod at switch-over (card S3).
+
+1. **Mealie token.** Start Mealie (`.\legacy\mealie.cmd start`), open http://localhost:9925, click your name → **Profile** → **API Tokens**, make one called `kitchen-import` and copy it. Don't save it in a file in the repo.
+2. **Sign in to Azure** (the import uses your Entra sign-in, no database password): `az login`, to the account that can reach the database. The database must already have the latest migrations (a deploy applies them) and you must have signed in to the app once, so your household exists.
+3. **Set the environment** in the terminal you'll run it from (PowerShell):
+
+   ```powershell
+   $env:MEALIE_URL = "http://localhost:9925"
+   $env:MEALIE_TOKEN = "<the token from step 1>"
+   $env:SQL_SERVER = "<server>.database.windows.net"   # Dev's SQL server; Prod's at switch-over
+   $env:SQL_DATABASE = "<database name>"
+   ```
+
+   Dev's and Prod's server and database names are in the Azure portal (resource group `rg-kitchen-dev` / `rg-kitchen-prod`) and in `infra/README.md`. Only if the database has more than one household, also set `$env:KITCHEN_HOUSEHOLD_ID`.
+4. **Run it** from the repo root: `pnpm --filter @kitchen/db import:mealie`.
+5. **Read the report.** It lists how many foods, recipes and meal plan entries were new, updated or unchanged, then anything it couldn't carry over exactly: recipes Mealie wouldn't return, units that aren't in the unit table (kept in the ingredient's note), ingredient lines with no food (the whole line became a food), meal plan notes that aren't recipes (skipped), and sides/desserts (planned as dinner). Fix those by hand in the app if you care, or in Mealie and run again.
+6. Clear the token afterwards: `Remove-Item Env:MEALIE_TOKEN`, and delete it in Mealie once switch-over is done.
+
 ---
 
 # mealie-home (legacy laptop setup)
