@@ -1,4 +1,4 @@
-import type { Recipe, RecipeInput, RecipeListResponse, RecipeSummary, Unit, UnitListResponse } from "@kitchen/shared";
+import type { CookedRequest, CookedResponse, Recipe, RecipeInput, RecipeListResponse, RecipeSummary, Unit, UnitListResponse } from "@kitchen/shared";
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -10,6 +10,8 @@ export interface RecipeApi {
   update(id: string, input: RecipeInput): Promise<Recipe>;
   remove(id: string): Promise<void>;
   units(): Promise<Unit[]>;
+  /** "I made this": uses up pantry stock for the servings made and logs the cook. */
+  cooked(id: string, servingsMade?: number): Promise<CookedResponse>;
 }
 
 /** A request the API refused or couldn't answer. `messages` are fit to show the person. */
@@ -66,6 +68,10 @@ export function createRecipeApi(apiUrl: string, getToken: () => Promise<string>,
     },
     async units() {
       return ((await (await send("GET", "/api/units")).json()) as UnitListResponse).units;
+    },
+    async cooked(id, servingsMade) {
+      const body: CookedRequest = servingsMade === undefined ? {} : { servingsMade };
+      return (await (await send("POST", `/api/recipes/${id}/cooked`, body)).json()) as CookedResponse;
     },
   };
 }

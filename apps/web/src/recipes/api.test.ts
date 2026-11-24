@@ -67,4 +67,17 @@ describe("recipe API client", () => {
     const offline = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     await expect(createRecipeApi(api, getToken, offline).list()).rejects.toMatchObject({ status: 0, messages: ["Failed to fetch"] });
   });
+
+  it("posts \"I made this\" with the servings made", async () => {
+    const result = { eventId: "e", recipeId: recipe.id, servingsMade: 2, cookedAt: "2026-11-22T12:00:00.000Z", used: [], shortfalls: [] };
+    const fetchFn = vi.fn().mockResolvedValue(json(result));
+
+    await expect(createRecipeApi(api, getToken, fetchFn).cooked(recipe.id, 2)).resolves.toEqual(result);
+
+    expect(fetchFn).toHaveBeenCalledWith(`${api}/api/recipes/${recipe.id}/cooked`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ servingsMade: 2 }),
+    });
+  });
 });

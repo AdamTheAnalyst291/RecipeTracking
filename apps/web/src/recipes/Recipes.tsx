@@ -1,4 +1,4 @@
-import type { Recipe, RecipeIngredient, RecipeSummary } from "@kitchen/shared";
+import type { CookedResponse, Recipe, RecipeIngredient, RecipeSummary } from "@kitchen/shared";
 import { useEffect, useState } from "react";
 import { RecipeApiError, type RecipeApi } from "./api.js";
 import { RecipeEditor } from "./RecipeEditor.js";
@@ -111,6 +111,9 @@ function RecipeDetail({
   const [recipe, setRecipe] = useState<Recipe | null>(initial ?? null);
   const [problem, setProblem] = useState<string | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [servingsText, setServingsText] = useState<string | null>(null);
+  const [cooked, setCooked] = useState<CookedResponse | null>(null);
+  const [cooking, setCooking] = useState(false);
 
   useEffect(() => {
     if (initial) return;
@@ -131,6 +134,25 @@ function RecipeDetail({
     } catch (error) {
       setConfirming(false);
       setProblem(reasonOf(error));
+    }
+  }
+
+  async function cook(current: Recipe) {
+    const servings = Number(servingsText ?? current.servings ?? 1);
+    if (!Number.isFinite(servings) || servings <= 0) {
+      setCooked(null);
+      setProblem("The servings made must be a number above 0.");
+      return;
+    }
+    setCooking(true);
+    setProblem(null);
+    setCooked(null);
+    try {
+      setCooked(await api.cooked(id, servings));
+    } catch (error) {
+      setProblem(reasonOf(error));
+    } finally {
+      setCooking(false);
     }
   }
 
@@ -172,6 +194,28 @@ function RecipeDetail({
               <li key={n}>{s}</li>
             ))}
           </ol>
+          <div className="recipe-cook">
+            <label>
+              Servings made{" "}
+              <input
+                type="number"
+                min="0"
+                step="any"
+                value={servingsText ?? String(recipe.servings ?? 1)}
+                onChange={(e) => setServingsText(e.target.value)}
+              />
+            </label>
+            <button type="button" disabled={cooking} onClick={() => void cook(recipe)}>
+              I made this
+            </button>
+          </div>
+          {cooked && (
+            <p role="status">
+              Logged. Used up:{" "}
+              {cooked.used.length === 0 ? "nothing from the pantry" : cooked.used.map((u) => `${u.amount} ${u.unit} ${u.product}`).join(", ")}.
+              {cooked.shortfalls.length > 0 && ` Ran short: ${cooked.shortfalls.map((s) => `${s.amount} ${s.unit} ${s.food}`).join(", ")}.`}
+            </p>
+          )}
           <div className="recipe-actions">
             <button type="button" onClick={() => onEdit(recipe)}>
               Edit
