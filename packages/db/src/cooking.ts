@@ -107,16 +107,19 @@ export function createCooking(pool: mssql.ConnectionPool): Cooking {
           )
         ).recordset.map((row) => ({ ...row, quantity: Number(row.quantity) })) as IngredientRow[];
 
-        // Locked until the end, so two cooks at once can't both spend the same stock.
+        // Locked until the end, so two cooks at once can't both spend the same stock. Always
+        // locked in id order, so two cooks sharing products can't wait on each other.
         const products = (
           await request().query(
             `SELECT p.id, p.food_id, p.name, p.unit_id, u.abbreviation AS unit, p.stock_quantity AS stock
              FROM product p WITH (UPDLOCK, ROWLOCK) JOIN unit u ON u.id = p.unit_id
              WHERE p.household_id = @h
                AND p.food_id IN (SELECT food_id FROM recipe_ingredient WHERE recipe_id = @r)
-             ORDER BY p.name, p.id`,
+             ORDER BY p.id`,
           )
         ).recordset.map((row) => ({ ...row, stock: Number(row.stock) })) as ProductRow[];
+        // Draw down in name order, so which product runs out first is predictable.
+        products.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
 
         const conversions = new Map<string, number>();
         for (const row of (await new mssql.Request(tx).query("SELECT from_unit_id, to_unit_id, factor FROM unit_conversion")).recordset) {

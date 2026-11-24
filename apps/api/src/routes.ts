@@ -1,13 +1,13 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
 import { withAuth, type AuthenticatedHandler } from "./auth.js";
 import { cookingAccess, pantryAccess, recipeStore } from "./database.js";
+import { createCookingHandler } from "./functions/cooking.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
+import { createPantryHandlers } from "./functions/pantry.js";
 import { createRecipeHandlers } from "./functions/recipes.js";
 
 const recipes = createRecipeHandlers(recipeStore);
-import { createCookingHandler } from "./functions/cooking.js";
-import { createPantryHandlers } from "./functions/pantry.js";
 
 const pantry = createPantryHandlers(pantryAccess);
 const cooked = createCookingHandler(cookingAccess);
