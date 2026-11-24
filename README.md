@@ -7,7 +7,7 @@ Two halves live in this repo while the move happens (ADR-25):
 
 ## Importing from Mealie (one time, card K3)
 
-`pnpm --filter @kitchen/db import:mealie` copies your foods, recipes (name, servings, time, source, tags, ingredients, steps) and meal plan from the running Mealie into the kitchen database. It only reads Mealie (GET requests, enforced in code and tested) and never deletes anything. It is safe to run again: each Mealie item is remembered (table `import_source`), so a second run skips what hasn't changed, updates what changed in Mealie and doesn't duplicate. Edits you made in the kitchen app to an unchanged recipe are kept.
+`pnpm --filter @kitchen/db import:mealie` copies your foods, recipes (name, servings, time, source, tags, ingredients, steps) and meal plan from the running Mealie into the kitchen database. It only reads Mealie (GET requests, enforced in code and tested) and never deletes a recipe, food or planned meal. A recipe that changed in Mealie since the last run has its tags, ingredients and steps rewritten from Mealie, so do your edits to it in Mealie until switch-over. Foods renamed in Mealie are not renamed again. It is safe to run again: each Mealie item is remembered (table `import_source`), so a second run skips what hasn't changed, updates what changed in Mealie and doesn't duplicate. Edits you made in the kitchen app to an unchanged recipe are kept.
 
 Run it against **Dev first**, read the report, then run it against Prod at switch-over (card S3).
 

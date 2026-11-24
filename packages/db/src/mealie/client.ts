@@ -33,7 +33,10 @@ export function createMealieClient({ baseUrl, token, fetch: doFetch = fetch }: M
   return {
     async get(path) {
       if (!path.startsWith("/")) throw new Error(`Mealie path must start with /: ${path}`);
-      const response = await doFetch(new URL(path, root).toString(), {
+      const target = new URL(path, root);
+      // A path like //other-host must never carry the token somewhere else.
+      if (target.origin !== root.origin) throw new Error(`Mealie path leaves the Mealie server: ${path}`);
+      const response = await doFetch(target.toString(), {
         method: "GET",
         headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
       });

@@ -42,7 +42,7 @@ async function inTransaction<T>(pool: mssql.ConnectionPool, work: (tx: mssql.Tra
  * ingredients and steps) and meal plan entries. Running it again is safe: each Mealie item is
  * linked to the row it became (`import_source`), an unchanged item is left alone (so edits
  * made in the kitchen app since survive), a changed one is updated and a deleted one is
- * recreated. Nothing is ever deleted. Problems are collected in the report, never thrown,
+ * recreated. No recipe, food or planned meal is ever deleted (a changed recipe's tags, ingredients and steps are rewritten). Problems are collected in the report, never thrown,
  * so one bad recipe doesn't stop the rest.
  */
 export async function importMealie(pool: mssql.ConnectionPool, householdId: string, data: MealieExport): Promise<ImportReport> {

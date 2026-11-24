@@ -11,3 +11,4 @@ Terms the kitchen app uses, so code, cards and tests say the same thing. Decisio
 - **Meal plan**: the household's planned meals. The week view shows seven days (Monday to Sunday), today's meals first.
 - **Planned meal**: one recipe set for a date and a meal slot, with a servings count. It starts at the recipe's own servings (1 if the recipe has none). The same recipe may be planned twice in a slot. Deleting a recipe removes its planned meals.
 - **Meal slot**: which meal of the day a planned meal is for: breakfast, lunch, dinner or snack, shown in that order.
+- **Import link**: a row in `import_source` remembering which kitchen row an item imported from another system (today Mealie, card K3) became, plus a fingerprint of what was imported. A second import run uses it to skip unchanged items, update changed ones and never duplicate. Mealie meal plan entries become planned meals; entries that are only a note are skipped and reported.
