@@ -47,3 +47,16 @@ output "auth_client_id" {
 output "tenant_id" {
   value = data.azurerm_client_config.current.tenant_id
 }
+
+output "settings" {
+  description = "The choices that set this environment apart, read from the resources themselves, so an environment root's tests can check what it passed in. Nothing here is secret."
+  value = {
+    resource_group_name        = azurerm_key_vault.this.resource_group_name
+    location                   = azurerm_mssql_server.this.location
+    sql_admin_login            = azurerm_mssql_server.this.azuread_administrator[0].login_username
+    sql_admin_object_id        = azurerm_mssql_server.this.azuread_administrator[0].object_id
+    database_uses_free_offer   = azapi_resource.app_database.body.properties.useFreeLimit
+    key_vault_purge_protection = azurerm_key_vault.this.purge_protection_enabled
+    api_allowed_origins        = azapi_resource_action.api_cors.body.properties.cors.allowedOrigins
+  }
+}

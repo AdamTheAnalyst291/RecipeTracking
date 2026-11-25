@@ -1,8 +1,10 @@
 name: Infrastructure
 
-# Terraform checks for infra/, and a Dev plan on pull requests. Applying Dev happens in
-# the Deploy Dev workflow on merge to main, right before the apps deploy. The bootstrap
-# is applied by hand (infra/README.md).
+# Terraform checks for infra/ (Dev, Prod, the module and the bootstrap), the deploy
+# scripts' tests, and a Dev plan on pull requests. Prod is never planned here: its
+# identity signs in only in the Deploy Prod workflow, after Adam approves. Applying Dev
+# happens in the Deploy Dev workflow on merge to main, right before the apps deploy.
+# The bootstrap is applied by hand (infra/README.md).
 #
 # The repository is public (ADR-30), so only jobs for branches in this repository sign
 # in to Azure. Pull requests from forks get the checks only: they never run in the `dev`
@@ -43,7 +45,7 @@ jobs:
 
       - name: Validate every root
         run: |
-          for dir in infra/bootstrap infra/environments/dev infra/modules/environment; do
+          for dir in infra/bootstrap infra/environments/dev infra/environments/prod infra/modules/environment; do
             echo "::group::$dir"
             terraform -chdir="$dir" init -backend=false -lockfile=readonly
             terraform -chdir="$dir" validate
@@ -53,6 +55,10 @@ jobs:
       # Plan-only tests with mocked providers; they need no Azure sign-in.
       - run: terraform -chdir=infra/bootstrap test
       - run: terraform -chdir=infra/modules/environment test
+      - run: terraform -chdir=infra/environments/prod test
+
+      # The deploy scripts against fake az and curl.
+      - run: bash infra/scripts/tests/deploy-api.test.sh
 
   plan-dev:
     name: Plan Dev
