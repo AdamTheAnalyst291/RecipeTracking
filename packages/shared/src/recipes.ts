@@ -37,6 +37,18 @@ export interface RecipeListResponse {
   recipes: RecipeSummary[];
 }
 
+/** Body of `POST /api/recipe-import`: the recipe page to read. */
+export interface RecipeImportRequest {
+  url: string;
+}
+
+/** A recipe read from a web page, not yet saved: the person checks it, then saves it as usual. */
+export interface RecipeImportResponse {
+  recipe: RecipeInput;
+  /** Foods the draft names that the household doesn't have yet; saving adds them. */
+  newFoods: string[];
+}
+
 export interface Unit {
   name: string;
   abbreviation: string;
@@ -48,13 +60,9 @@ export interface UnitListResponse {
 
 export type ParsedRecipe = { ok: true; value: RecipeInput } | { ok: false; errors: string[] };
 
-const MAX_NAME = 200;
-const MAX_TAG = 50;
-const MAX_URL = 2000;
-const MAX_CREDIT = 200;
-const MAX_NOTE = 500;
-const MAX_STEP = 4000;
-const MAX_LINES = 200;
+/** The most each recipe field holds: characters of text, lines of a list, or the largest number. */
+export const RECIPE_LIMITS = { name: 200, tag: 50, url: 2000, credit: 200, note: 500, step: 4000, lines: 200, number: 1_000_000 } as const;
+const { name: MAX_NAME, tag: MAX_TAG, url: MAX_URL, credit: MAX_CREDIT, note: MAX_NOTE, step: MAX_STEP, lines: MAX_LINES, number: MAX_NUMBER } = RECIPE_LIMITS;
 
 type Fields = Record<string, unknown>;
 
@@ -93,7 +101,7 @@ export function parseRecipeInput(body: unknown): ParsedRecipe {
 
   const wholeNumber = (value: unknown, label: string, min: number): number | null => {
     if (value === undefined || value === null) return null;
-    if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > 1_000_000) {
+    if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > MAX_NUMBER) {
       errors.push(`${label} must be a whole number of at least ${min}.`);
       return null;
     }
@@ -147,7 +155,7 @@ export function parseRecipeInput(body: unknown): ParsedRecipe {
     const note = text(line.note, `${label}'s note`, MAX_NOTE, false);
     let quantity: number | null = null;
     if (line.quantity !== undefined && line.quantity !== null) {
-      if (typeof line.quantity !== "number" || !Number.isFinite(line.quantity) || line.quantity <= 0 || line.quantity > 1_000_000) {
+      if (typeof line.quantity !== "number" || !Number.isFinite(line.quantity) || line.quantity <= 0 || line.quantity > MAX_NUMBER) {
         errors.push(`${label}'s quantity must be a number above zero.`);
       } else {
         quantity = line.quantity;

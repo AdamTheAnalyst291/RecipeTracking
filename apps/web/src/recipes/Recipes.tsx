@@ -1,9 +1,14 @@
-import type { CookedResponse, Recipe, RecipeIngredient, RecipeSummary } from "@kitchen/shared";
+import type { CookedResponse, Recipe, RecipeImportResponse, RecipeIngredient, RecipeSummary } from "@kitchen/shared";
 import { useEffect, useState } from "react";
 import { RecipeApiError, type RecipeApi } from "./api.js";
 import { RecipeEditor } from "./RecipeEditor.js";
+import { RecipeImport } from "./RecipeImport.js";
 
-type View = { page: "list" } | { page: "detail"; id: string; recipe?: Recipe } | { page: "edit"; recipe: Recipe | null };
+type View =
+  | { page: "list" }
+  | { page: "import" }
+  | { page: "detail"; id: string; recipe?: Recipe }
+  | { page: "edit"; recipe: Recipe | null; imported?: RecipeImportResponse };
 
 const reasonOf = (error: unknown) => (error instanceof RecipeApiError ? error.messages.join(" ") : "Something went wrong.");
 
@@ -12,7 +17,22 @@ export function Recipes({ api }: { api: RecipeApi }) {
   const [view, setView] = useState<View>({ page: "list" });
   switch (view.page) {
     case "list":
-      return <RecipeList api={api} onOpen={(id) => setView({ page: "detail", id })} onAdd={() => setView({ page: "edit", recipe: null })} />;
+      return (
+        <RecipeList
+          api={api}
+          onOpen={(id) => setView({ page: "detail", id })}
+          onAdd={() => setView({ page: "edit", recipe: null })}
+          onImport={() => setView({ page: "import" })}
+        />
+      );
+    case "import":
+      return (
+        <RecipeImport
+          api={api}
+          onImported={(imported) => setView({ page: "edit", recipe: null, imported })}
+          onCancel={() => setView({ page: "list" })}
+        />
+      );
     case "detail":
       return (
         <RecipeDetail
@@ -29,6 +49,7 @@ export function Recipes({ api }: { api: RecipeApi }) {
         <RecipeEditor
           api={api}
           recipe={recipe}
+          imported={view.imported}
           onSaved={(saved) => setView({ page: "detail", id: saved.id, recipe: saved })}
           onCancel={() => setView(recipe ? { page: "detail", id: recipe.id, recipe } : { page: "list" })}
         />
@@ -37,7 +58,17 @@ export function Recipes({ api }: { api: RecipeApi }) {
   }
 }
 
-function RecipeList({ api, onOpen, onAdd }: { api: RecipeApi; onOpen: (id: string) => void; onAdd: () => void }) {
+function RecipeList({
+  api,
+  onOpen,
+  onAdd,
+  onImport,
+}: {
+  api: RecipeApi;
+  onOpen: (id: string) => void;
+  onAdd: () => void;
+  onImport: () => void;
+}) {
   const [recipes, setRecipes] = useState<RecipeSummary[] | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -62,6 +93,9 @@ function RecipeList({ api, onOpen, onAdd }: { api: RecipeApi; onOpen: (id: strin
     <section className="recipes">
       <header className="recipes-header">
         <h2>Recipes</h2>
+        <button type="button" onClick={onImport}>
+          Import from a website
+        </button>
         <button type="button" onClick={onAdd}>
           Add recipe
         </button>

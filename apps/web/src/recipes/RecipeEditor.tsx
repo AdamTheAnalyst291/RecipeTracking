@@ -1,4 +1,4 @@
-import { parseRecipeInput, type Recipe, type Unit } from "@kitchen/shared";
+import { parseRecipeInput, type Recipe, type RecipeImportResponse, type RecipeInput, type Unit } from "@kitchen/shared";
 import { useEffect, useState } from "react";
 import { RecipeApiError, type RecipeApi } from "./api.js";
 
@@ -21,7 +21,7 @@ interface Draft {
   steps: string[];
 }
 
-function draftOf(recipe: Recipe | null): Draft {
+function draftOf(recipe: RecipeInput | null): Draft {
   return {
     name: recipe?.name ?? "",
     servings: recipe?.servings?.toString() ?? "",
@@ -61,16 +61,19 @@ function bodyOf(draft: Draft) {
 export function RecipeEditor({
   api,
   recipe,
+  imported,
   onSaved,
   onCancel,
 }: {
   api: RecipeApi;
   /** The recipe being edited, or null to add a new one. */
   recipe: Recipe | null;
+  /** A draft read from a website, to check before it is saved as a new recipe. */
+  imported?: RecipeImportResponse | undefined;
   onSaved: (saved: Recipe) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState(() => draftOf(recipe));
+  const [draft, setDraft] = useState(() => draftOf(recipe ?? imported?.recipe ?? null));
   const [units, setUnits] = useState<Unit[]>([]);
   const [problems, setProblems] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -109,7 +112,9 @@ export function RecipeEditor({
 
   return (
     <form className="recipe-form" onSubmit={(e) => void save(e)} noValidate>
-      <h2>{recipe ? "Edit recipe" : "Add recipe"}</h2>
+      <h2>{recipe ? "Edit recipe" : imported ? "Check the imported recipe" : "Add recipe"}</h2>
+      {imported && <p>Nothing is saved yet. Check the amounts and foods against the page, then save.</p>}
+      {imported && imported.newFoods.length > 0 && <p>New foods this adds (as imported): {imported.newFoods.join(", ")}.</p>}
 
       <label>
         Name

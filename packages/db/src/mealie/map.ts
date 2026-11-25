@@ -181,7 +181,7 @@ export function fingerprint(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value)).digest("hex");
 }
 
-/** Names a Mealie unit might go by, to the abbreviations in the unit table. */
+/** Other names a unit might go by (in Mealie or on a recipe web page), to the abbreviations in the unit table. */
 const UNIT_ALIASES: Record<string, string> = {
   grams: "g", gram: "g", gr: "g", kilograms: "kg", kilogram: "kg", ounces: "oz", ounce: "oz",
   pounds: "lb", pound: "lb", lbs: "lb", millilitres: "ml", milliliters: "ml", millilitre: "ml", milliliter: "ml",
@@ -191,7 +191,7 @@ const UNIT_ALIASES: Record<string, string> = {
   pieces: "ea", piece: "ea", whole: "ea",
 };
 
-/** The unit-table row id for a Mealie unit name (`unitIds` is keyed by lower-case name and abbreviation), or undefined. */
+/** What `unitIds` holds for a unit name (it is keyed by lower-case name and abbreviation), or undefined. */
 export function matchUnit(unitIds: ReadonlyMap<string, string>, name: string): string | undefined {
   const key = name.trim().toLowerCase();
   const alias = UNIT_ALIASES[key];

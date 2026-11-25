@@ -28,6 +28,19 @@ describe("recipe API client", () => {
     expect(fetchFn).toHaveBeenCalledWith(`${api}/api/recipes`, { method: "GET", headers });
   });
 
+  it("asks for a draft of the recipe on a web page", async () => {
+    const draft = { recipe: input, newFoods: [] };
+    const fetchFn = vi.fn().mockResolvedValue(json(draft));
+
+    await expect(createRecipeApi(api, getToken, fetchFn).importFromUrl("https://recipes.example/toast")).resolves.toEqual(draft);
+
+    expect(fetchFn).toHaveBeenCalledWith(`${api}/api/recipe-import`, {
+      method: "POST",
+      headers: { ...headers, "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://recipes.example/toast" }),
+    });
+  });
+
   it("reads, creates, edits and deletes with the access token", async () => {
     const fetchFn = vi
       .fn()

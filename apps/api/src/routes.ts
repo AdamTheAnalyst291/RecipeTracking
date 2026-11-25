@@ -5,10 +5,13 @@ import { createCookingHandler } from "./functions/cooking.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
 import { createPantryHandlers } from "./functions/pantry.js";
+import { createRecipeImportHandler } from "./functions/recipeImport.js";
 import { createRecipeHandlers } from "./functions/recipes.js";
+import { createPageFetcher } from "./recipes/import/fetchPage.js";
 import { createShoppingListHandlers } from "./functions/shoppingList.js";
 
 const recipes = createRecipeHandlers(recipeStore);
+const recipeImport = createRecipeImportHandler(recipeStore, createPageFetcher());
 
 const pantry = createPantryHandlers(pantryAccess);
 const cooked = createCookingHandler(cookingAccess);
@@ -38,6 +41,8 @@ const specs: RouteSpec[] = [
   { name: "recipes", route: "recipes", methods: ["GET", "POST"], access: "household", handler: recipes.collection },
   { name: "recipe", route: "recipes/{id}", methods: ["GET", "PUT", "DELETE"], access: "household", handler: recipes.item },
   { name: "recipeCooked", route: "recipes/{id}/cooked", methods: ["POST"], access: "household", handler: cooked },
+  // Not under `recipes/`, where `recipes/{id}` would also match it.
+  { name: "recipeImport", route: "recipe-import", methods: ["POST"], access: "household", handler: recipeImport },
   { name: "units", route: "units", methods: ["GET"], access: "household", handler: recipes.units },
   { name: "pantryList", route: "pantry/products", methods: ["GET"], access: "household", handler: pantry.list },
   { name: "pantryAdd", route: "pantry/products", methods: ["POST"], access: "household", handler: pantry.add },

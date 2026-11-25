@@ -270,3 +270,63 @@ describe("I made this", () => {
     expect(api.cooks).toEqual([]);
   });
 });
+
+describe("importing a recipe from a website", () => {
+  const draft = {
+    recipe: {
+      name: "Weeknight Lentil Stew",
+      servings: 6,
+      totalMinutes: 75,
+      sourceUrl: "https://recipes.example/stew",
+      sourceCredit: "Made-up Cook",
+      tags: ["stew"],
+      ingredients: [{ food: "Red lentils", quantity: 1.5, unit: "cup", note: "rinsed" }],
+      steps: ["Simmer."],
+    },
+    newFoods: ["Red lentils"],
+  };
+
+  async function paste(user: ReturnType<typeof userEvent.setup>, url: string) {
+    await user.click(await screen.findByRole("button", { name: "Import from a website" }));
+    await user.type(screen.getByLabelText("Recipe page address"), url);
+    await user.click(screen.getByRole("button", { name: "Import" }));
+  }
+
+  it("shows the draft to check, and saves it only when asked", async () => {
+    const { api, user } = open(inMemoryRecipeApi([]));
+    api.importResult = draft;
+
+    await paste(user, "https://recipes.example/stew");
+
+    expect(await screen.findByRole("heading", { name: "Check the imported recipe" })).toBeTruthy();
+    expect(api.imports).toEqual(["https://recipes.example/stew"]);
+    expect(screen.getByLabelText("Name")).toHaveProperty("value", "Weeknight Lentil Stew");
+    expect(screen.getByLabelText("Food 1")).toHaveProperty("value", "Red lentils");
+    expect(screen.getByText(/New foods/).textContent).toContain("Red lentils");
+    expect(api.recipes.size).toBe(0);
+
+    await user.click(screen.getByRole("button", { name: "Save recipe" }));
+
+    expect(await screen.findByRole("heading", { name: "Weeknight Lentil Stew" })).toBeTruthy();
+    expect([...api.recipes.values()]).toMatchObject([draft.recipe]);
+  });
+
+  it("says why a page couldn't be imported, keeping the address", async () => {
+    const { user } = open();
+
+    await paste(user, "https://recipes.example/tips");
+
+    expect((await screen.findByRole("alert")).textContent).toContain("No recipe data found");
+    expect(screen.getByLabelText("Recipe page address")).toHaveProperty("value", "https://recipes.example/tips");
+  });
+
+  it("goes back to the list without importing", async () => {
+    const { api, user } = open();
+    await user.click(await screen.findByRole("button", { name: "Import from a website" }));
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(await screen.findByRole("list", { name: "Recipes" })).toBeTruthy();
+    expect(api.imports).toEqual([]);
+  });
+});
