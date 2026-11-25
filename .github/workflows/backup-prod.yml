@@ -1,0 +1,74 @@
+name: Backup Prod
+
+# Weekly export of the Prod database to blob storage (ADR-25, card S2). Point-in-time
+# restore (7 days on the free offer) is the first line; this keeps a copy apart from the
+# database, so one survives a deleted database or server. Restore steps: infra/README.md,
+# "Backups".
+#
+# A scheduled job can't wait for anyone's approval, and the `prod` GitHub Environment
+# makes every job wait for Adam. So this job doesn't use `prod` or its deploy identity.
+# It runs in its own environment, `prod-backup`, which allows main only and has no
+# reviewer, as its own identity, kitchen-github-prod-backup. That identity can read the
+# Prod database (db_datareader and VIEW DEFINITION, nothing else) and add, read and delete
+# blobs in the export container. It can't change any Azure resource, deploy anything,
+# write to the database, or delete the versions and soft-deleted copies that keep pruned
+# exports for 30 days.
+#
+# The repository is public (ADR-30). No pull request runs this; only the schedule and
+# people with write access can start it, and only on main.
+on:
+  schedule:
+    - cron: "17 7 * * 0" # Sundays 07:17 UTC (01:17 in Chicago in winter)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-prod
+  cancel-in-progress: false
+
+jobs:
+  export:
+    name: Export the Prod database
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prod-backup
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # OIDC sign-in to Azure as kitchen-github-prod-backup
+    steps:
+      - name: Check that the backup is set up
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          SQL_SERVER: ${{ vars.KITCHEN_SQL_SERVER }}
+          BACKUP_STORAGE_ACCOUNT: ${{ vars.KITCHEN_EXPORTS_STORAGE_ACCOUNT }}
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_TENANT_ID" ] || [ -z "$AZURE_SUBSCRIPTION_ID" ] || [ -z "$SQL_SERVER" ] || [ -z "$BACKUP_STORAGE_ACCOUNT" ]; then
+            echo "::error::The prod-backup GitHub Environment or its variables are missing. See infra/README.md, \"Backups\"."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      # SqlPackage, at the version pinned in .config/dotnet-tools.json.
+      - run: dotnet tool restore
+
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Export, upload and keep the newest 8
+        env:
+          SQL_SERVER: ${{ vars.KITCHEN_SQL_SERVER }}
+          SQL_DATABASE: sqldb-kitchen-app
+          BACKUP_STORAGE_ACCOUNT: ${{ vars.KITCHEN_EXPORTS_STORAGE_ACCOUNT }}
+          BACKUP_CONTAINER: database-exports
+          BACKUP_KEEP: "8"
+          SQLPACKAGE: dotnet tool run sqlpackage
+        run: infra/scripts/export-database.sh

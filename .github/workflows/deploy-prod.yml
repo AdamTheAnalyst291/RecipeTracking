@@ -111,6 +111,9 @@ jobs:
       TF_VAR_deploy_identity_object_id: ${{ vars.AZURE_PRINCIPAL_ID }}
       # The kitchen-prod app registration (infra/README.md, "Prod"). Empty until it exists.
       TF_VAR_auth_client_id: ${{ vars.KITCHEN_AUTH_CLIENT_ID }}
+      # kitchen-github-prod-backup, which runs the weekly export (card S2). Empty until the
+      # bootstrap creates it; until then nobody is granted the export container.
+      TF_VAR_backup_identity_object_id: ${{ vars.AZURE_BACKUP_PRINCIPAL_ID }}
       RESOURCE_GROUP: rg-kitchen-prod
     steps:
       - name: Check that Azure sign-in is set up
@@ -186,10 +189,13 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # Also makes the weekly export's identity a read-only database user (card S2).
       - name: Apply the migrations
         env:
           SQL_SERVER: ${{ env.SQL_SERVER_FQDN }}
           SQL_DATABASE: ${{ env.APP_DATABASE_NAME }}
+          BACKUP_READER_NAME: kitchen-github-prod-backup
+          BACKUP_READER_CLIENT_ID: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
         run: pnpm --filter @kitchen/db migrate
 
       # --- Deploy ------------------------------------------------------------

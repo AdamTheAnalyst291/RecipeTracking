@@ -1,7 +1,8 @@
 name: Infrastructure
 
-# Terraform checks for infra/ (Dev, Prod, the module and the bootstrap), the deploy
-# scripts' tests, and a Dev plan on pull requests. Prod is never planned here: its
+# Terraform checks for infra/ (Dev, Prod, the module and the bootstrap), the deploy and
+# export scripts' tests (the export also for real against a throwaway SQL Server), and a
+# Dev plan on pull requests. Prod is never planned here: its
 # identity signs in only in the Deploy Prod workflow, after Adam approves. Applying Dev
 # happens in the Deploy Dev workflow on merge to main, right before the apps deploy.
 # The bootstrap is applied by hand (infra/README.md).
@@ -14,12 +15,18 @@ on:
     branches: [main]
     paths:
       - infra/**
+      - packages/db/sql/**
+      - .config/dotnet-tools.json
       - .github/workflows/infrastructure.yml
+      - .github/workflows/backup-prod.yml
   push:
     branches: [main]
     paths:
       - infra/**
+      - packages/db/sql/**
+      - .config/dotnet-tools.json
       - .github/workflows/infrastructure.yml
+      - .github/workflows/backup-prod.yml
 
 permissions:
   contents: read
@@ -57,8 +64,42 @@ jobs:
       - run: terraform -chdir=infra/modules/environment test
       - run: terraform -chdir=infra/environments/prod test
 
-      # The deploy scripts against fake az and curl.
+      # The deploy and export scripts against fake az, curl and sqlpackage.
       - run: bash infra/scripts/tests/deploy-api.test.sh
+      - run: bash infra/scripts/tests/export-database.test.sh
+
+  export-test:
+    name: Export and restore a test database
+    runs-on: ubuntu-latest
+    # The weekly Prod export (card S2), run for real with SqlPackage against a throwaway
+    # SQL Server that lives only as long as this job, then restored and compared. Only blob
+    # storage is faked. The password is a throwaway for this container. Signs in to nothing.
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-CU20-ubuntu-22.04
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Kitchen_Test_1!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Kitchen_Test_1!' -Q 'SELECT 1'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+
+      # SqlPackage, at the version pinned in .config/dotnet-tools.json (the one Backup Prod uses).
+      - run: dotnet tool restore
+
+      - name: Export, restore and compare
+        env:
+          KITCHEN_TEST_SQL: Server=localhost,1433;User Id=sa;Password=Kitchen_Test_1!;TrustServerCertificate=true
+          # The sqlcmd inside the SQL Server container, so the runner needs no SQL tools.
+          SQLCMD: docker exec ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Kitchen_Test_1!
+          SQLPACKAGE: dotnet tool run sqlpackage
+        run: bash infra/scripts/tests/export-database.integration.sh
 
   plan-dev:
     name: Plan Dev

@@ -208,3 +208,120 @@ run "rejects_a_client_id_that_is_not_a_guid" {
 
   expect_failures = [var.auth_client_id]
 }
+
+# --- Database exports (card S2) ----------------------------------------------
+
+run "no_export_storage_unless_asked_for" {
+  command = plan
+
+  assert {
+    condition     = length(azurerm_storage_account.exports) == 0 && length(azurerm_storage_container.exports) == 0
+    error_message = "Only an environment that turns on database_exports gets export storage."
+  }
+}
+
+run "exports_go_to_a_versioned_soft_deleted_container_with_no_account_keys" {
+  command = plan
+
+  variables {
+    environment      = "prod"
+    database_exports = true
+  }
+
+  assert {
+    condition     = startswith(azurerm_storage_account.exports[0].name, "stkitchenbakprod") && length(azurerm_storage_account.exports[0].name) <= 24
+    error_message = "The export account must be named stkitchenbak<env><suffix>, at most 24 characters."
+  }
+
+  assert {
+    condition     = azurerm_storage_account.exports[0].shared_access_key_enabled == false && azurerm_storage_account.exports[0].allow_nested_items_to_be_public == false
+    error_message = "Exports must be reached with Entra ID only: no account keys, nothing public."
+  }
+
+  assert {
+    condition     = azurerm_storage_account.exports[0].blob_properties[0].versioning_enabled
+    error_message = "Blob versioning must be on, so an overwritten or deleted export keeps a version."
+  }
+
+  assert {
+    condition     = azurerm_storage_account.exports[0].blob_properties[0].delete_retention_policy[0].days >= 14
+    error_message = "Deleted exports must stay soft-deleted for at least 14 days."
+  }
+
+  assert {
+    condition     = azurerm_storage_account.exports[0].blob_properties[0].container_delete_retention_policy[0].days >= 14
+    error_message = "A deleted export container must stay soft-deleted for at least 14 days."
+  }
+
+  assert {
+    condition     = azurerm_storage_container.exports[0].name == "database-exports" && azurerm_storage_container.exports[0].container_access_type == "private"
+    error_message = "Exports go in the private container database-exports."
+  }
+
+  assert {
+    condition     = one(one(azurerm_storage_management_policy.exports[0].rule).actions[0].version).delete_after_days_since_creation >= 30
+    error_message = "Old versions of exports must be kept at least 30 days before they're cleaned up."
+  }
+}
+
+run "backup_reader_may_write_exports_and_nothing_else" {
+  command = plan
+
+  variables {
+    environment               = "prod"
+    database_exports          = true
+    backup_identity_object_id = "00000000-0000-0000-0000-000000000006"
+  }
+
+  assert {
+    condition     = length(azurerm_role_assignment.exports_backup_identity) == 1
+    error_message = "The backup identity needs exactly one role assignment."
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.exports_backup_identity[0].role_definition_name == "Storage Blob Data Contributor"
+    error_message = "The backup identity gets Storage Blob Data Contributor, which can't delete blob versions, never Owner."
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.exports_backup_identity[0].principal_id == "00000000-0000-0000-0000-000000000006" && azurerm_role_assignment.exports_backup_identity[0].principal_type == "ServicePrincipal"
+    error_message = "The role must go to the backup identity's service principal."
+  }
+}
+
+run "no_role_assignment_until_the_backup_identity_exists" {
+  command = plan
+
+  variables {
+    environment      = "prod"
+    database_exports = true
+  }
+
+  assert {
+    condition     = length(azurerm_role_assignment.exports_backup_identity) == 0
+    error_message = "With no backup identity, nobody is granted access to the exports."
+  }
+}
+
+run "grants_nothing_while_exports_are_off" {
+  command = plan
+
+  variables {
+    backup_identity_object_id = "00000000-0000-0000-0000-000000000006"
+  }
+
+  assert {
+    condition     = length(azurerm_role_assignment.exports_backup_identity) == 0
+    error_message = "Without database_exports there is no container to grant."
+  }
+}
+
+run "rejects_a_backup_identity_that_is_not_a_guid" {
+  command = plan
+
+  variables {
+    backup_identity_object_id = "kitchen-github-prod-backup"
+  }
+
+  expect_failures = [var.backup_identity_object_id]
+}

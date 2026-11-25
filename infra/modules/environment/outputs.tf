@@ -60,3 +60,17 @@ output "settings" {
     api_allowed_origins        = azapi_resource_action.api_cors.body.properties.cors.allowedOrigins
   }
 }
+
+output "exports_storage_account_name" {
+  description = "Storage account the weekly database export writes to; empty when database_exports is off."
+  value       = var.database_exports ? azurerm_storage_account.exports[0].name : ""
+}
+
+output "exports_container_name" {
+  value = var.database_exports ? azurerm_storage_container.exports[0].name : ""
+}
+
+output "exports_backup_identity_principal_ids" {
+  description = "Who may write the database exports: the backup identity, once it exists."
+  value       = [for a in azurerm_role_assignment.exports_backup_identity : a.principal_id]
+}

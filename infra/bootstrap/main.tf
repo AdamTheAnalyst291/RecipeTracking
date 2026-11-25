@@ -64,13 +64,19 @@ locals {
     for e in var.environments : e => "rg-kitchen-${e}"
   }
 
-  # Roles the deploy identities may hand out inside their own resource group, to the
-  # API's managed identity. Nothing else, so a deploy identity can't make itself Owner.
+  # Roles the deploy identities may hand out inside their own resource group: to the
+  # API's managed identity, and to the backup identity on the export container (card S2).
+  # Nothing else, so a deploy identity can't make itself Owner.
   delegable_role_ids = [
     "b7e6dc6d-f1e8-4753-8033-0f276bb0955b", # Storage Blob Data Owner
     "4633458b-17de-408a-b874-0445c86b69e6", # Key Vault Secrets User
+    "ba92f5b4-2d11-453d-a403-e96b0029c9fe", # Storage Blob Data Contributor
   ]
-  delegable_roles = join(", ", local.delegable_role_ids)
+
+  # Environments whose database is exported weekly (card S2). Each gets a backup
+  # identity of its own, so the scheduled job never signs in as the deploy identity.
+  backup_environments = setintersection(var.environments, ["prod"])
+  delegable_roles     = join(", ", local.delegable_role_ids)
 }
 
 # --- Terraform state -----------------------------------------------------------
@@ -165,7 +171,7 @@ resource "azurerm_role_assignment" "deploy_role_assignments" {
   role_definition_name = "Role Based Access Control Administrator"
   principal_id         = azuread_service_principal.deploy[each.key].object_id
   principal_type       = "ServicePrincipal"
-  description          = "Lets Terraform grant the API's managed identity its storage and Key Vault roles, and nothing else."
+  description          = "Lets Terraform grant the API's managed identity its storage and Key Vault roles, and the backup identity its export container role, and nothing else."
 
   condition_version = "2.0"
   condition         = <<-EOT
@@ -198,6 +204,37 @@ resource "azurerm_role_assignment" "deploy_state" {
   role_definition_name = "Storage Blob Data Contributor"
   principal_id         = azuread_service_principal.deploy[each.key].object_id
   principal_type       = "ServicePrincipal"
+}
+
+# --- Backup identity (card S2) ---------------------------------------------------
+
+# Runs the weekly database export (.github/workflows/backup-prod.yml). It signs in only
+# from the GitHub Environment <env>-backup, which has no required reviewer (a scheduled
+# job can't wait for one) but allows main only. That is why it is a separate identity
+# with far less than the deploy identity: no Azure role here at all. Prod's Terraform
+# gives it Storage Blob Data Contributor on the export container, and the Deploy Prod
+# migration step makes it a read-only database user (db_datareader, VIEW DEFINITION).
+resource "azuread_application" "backup" {
+  for_each = local.backup_environments
+
+  display_name = "kitchen-github-${each.key}-backup"
+}
+
+resource "azuread_service_principal" "backup" {
+  for_each = local.backup_environments
+
+  client_id = azuread_application.backup[each.key].client_id
+}
+
+resource "azuread_application_federated_identity_credential" "backup_environment" {
+  for_each = local.backup_environments
+
+  application_id = azuread_application.backup[each.key].id
+  display_name   = "github-${replace(var.github_repository, "/", "-")}-${each.key}-backup"
+  description    = "GitHub Actions in ${var.github_repository}, environment ${each.key}-backup"
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "${var.github_oidc_subject_prefix}:environment:${each.key}-backup"
+  audiences      = ["api://AzureADTokenExchange"]
 }
 
 # --- Budget --------------------------------------------------------------------
