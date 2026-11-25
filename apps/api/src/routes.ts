@@ -1,6 +1,6 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
 import { withAuth, type AuthenticatedHandler } from "./auth.js";
-import { cookingAccess, mealPlanAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
+import { cookingAccess, mealPlanAccess, moneyAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
 import { createCookingHandler } from "./functions/cooking.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
@@ -9,6 +9,7 @@ import { createRecipeImportHandler } from "./functions/recipeImport.js";
 import { createRecipeHandlers } from "./functions/recipes.js";
 import { createPageFetcher } from "./recipes/import/fetchPage.js";
 import { createShoppingListHandlers } from "./functions/shoppingList.js";
+import { createMoneyHandlers } from "./functions/money.js";
 
 const recipes = createRecipeHandlers(recipeStore);
 const recipeImport = createRecipeImportHandler(recipeStore, createPageFetcher());
@@ -20,6 +21,7 @@ import { createMealPlanHandlers } from "./functions/mealPlan.js";
 
 const mealPlan = createMealPlanHandlers(mealPlanAccess);
 const shopping = createShoppingListHandlers(shoppingListAccess);
+const money = createMoneyHandlers(moneyAccess);
 
 interface RouteBase {
   name: string;
@@ -52,6 +54,17 @@ const specs: RouteSpec[] = [
   { name: "shoppingList", route: "shopping-list", methods: ["GET", "POST"], access: "household", handler: shopping.collection },
   { name: "shoppingListItems", route: "shopping-list/{id}/items", methods: ["POST"], access: "household", handler: shopping.items },
   { name: "shoppingListItem", route: "shopping-list/{id}/items/{itemId}", methods: ["PATCH", "DELETE"], access: "household", handler: shopping.item },
+  // Money (card $1). No route creates transactions or changes amounts or accounts (ADR-27).
+  { name: "moneyAccounts", route: "money/accounts", methods: ["GET"], access: "household", handler: money.accounts },
+  { name: "moneyCategories", route: "money/categories", methods: ["GET", "POST"], access: "household", handler: money.categories },
+  { name: "moneyCategory", route: "money/categories/{id}", methods: ["PATCH"], access: "household", handler: money.category },
+  { name: "moneyTransactions", route: "money/transactions", methods: ["GET"], access: "household", handler: money.transactions },
+  { name: "moneyTransactionCategory", route: "money/transactions/{id}/category", methods: ["PUT"], access: "household", handler: money.transactionCategory },
+  { name: "moneyTransactionSplits", route: "money/transactions/{id}/splits", methods: ["PUT"], access: "household", handler: money.transactionSplits },
+  { name: "moneyRules", route: "money/rules", methods: ["GET", "POST"], access: "household", handler: money.rules },
+  { name: "moneyRule", route: "money/rules/{id}", methods: ["PUT", "DELETE"], access: "household", handler: money.rule },
+  { name: "moneyRuleOrder", route: "money/rule-order", methods: ["PUT"], access: "household", handler: money.ruleOrder },
+  { name: "moneyApplyRules", route: "money/apply-rules", methods: ["POST"], access: "household", handler: money.applyRules },
 ];
 
 export const routes: (RouteBase & { access: RouteSpec["access"]; handler: HttpHandler })[] = specs.map((spec) =>
