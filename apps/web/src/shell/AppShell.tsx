@@ -14,11 +14,11 @@ export interface Screen {
 /** One screen at a time, with the others a thumb's reach away along the bottom. */
 export function AppShell({ screens }: { screens: Screen[] }) {
   const [current, setCurrent] = useState(screens[0]?.id);
-  const [opened, setOpened] = useState<ReadonlySet<string>>(new Set());
+  const [left, setLeft] = useState<ReadonlySet<string>>(new Set());
 
   const go = (id: string) => {
     if (id === current) return;
-    if (current) setOpened((before) => new Set(before).add(current));
+    if (current) setLeft((before) => new Set(before).add(current));
     setCurrent(id);
     document.documentElement.scrollTop = 0;
   };
@@ -27,7 +27,7 @@ export function AppShell({ screens }: { screens: Screen[] }) {
     <>
       {screens.map((screen) => {
         const shown = screen.id === current;
-        if (!shown && !(screen.keepOpen && opened.has(screen.id))) return null;
+        if (!shown && !(screen.keepOpen && left.has(screen.id))) return null;
         return (
           <div key={screen.id} hidden={!shown}>
             {screen.render(go)}

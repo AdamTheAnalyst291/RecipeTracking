@@ -2,7 +2,7 @@ import type { PlannedMeal } from "@kitchen/shared";
 import { useEffect, useState } from "react";
 import type { MealPlanApi } from "../mealPlan/api.js";
 import { dayLabel, weekStart } from "../mealPlan/dates.js";
-import { SLOT_LABEL, servingsText } from "../mealPlan/MealPlan.js";
+import { reasonOf, servingsText, SLOT_LABEL } from "../mealPlan/labels.js";
 
 interface Props {
   api: MealPlanApi;
@@ -21,7 +21,7 @@ export function Today({ api, today, onPlan }: Props) {
     let cancelled = false;
     api.week(weekStart(today)).then(
       (week) => !cancelled && setMeals(week.filter((m) => m.date === today)),
-      (error: unknown) => !cancelled && setProblem(error instanceof Error ? error.message : "Something went wrong."),
+      (error: unknown) => !cancelled && setProblem(reasonOf(error)),
     );
     return () => {
       cancelled = true;

@@ -1,3 +1,7 @@
+:root {
+  /* The manifest's theme colour. */
+  --theme: #146c43;
+}
 /* The tab bar sits at the bottom, within a thumb's reach, clear of the phone's home bar. */
 /* Room under everything on the page, including what follows the app, so the bar covers nothing. */
 body:has(.tab-bar) {
@@ -38,7 +42,7 @@ body:has(.tab-bar) {
   stroke-linejoin: round;
 }
 .tab-bar [aria-current="page"] {
-  color: #146c43;
+  color: var(--theme);
   font-weight: 700;
 }
 .today-meals {

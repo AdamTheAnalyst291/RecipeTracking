@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import source from "../../public/sw.js?raw";
 
 const ORIGIN = "https://kitchen.example.net";
@@ -15,6 +15,8 @@ function startWorker() {
   const fetched: string[] = [];
   const network = new Map<string, () => Response>();
   let online = true;
+  let stalled = false;
+  let full = false;
 
   const absolute = (input: string | { url: string }) => new URL(typeof input === "string" ? input : input.url, ORIGIN).href;
   const serve = (body: string, type: string) => () => new Response(body, { headers: { "content-type": type } });
@@ -28,6 +30,7 @@ function startWorker() {
     const url = absolute(input);
     fetched.push(url);
     if (!online) throw new TypeError("Failed to fetch");
+    if (stalled) return new Promise<Response>(() => {});
     return network.get(url.replace(/[?#].*$/, ""))?.() ?? new Response("Not found", { status: 404 });
   };
 
@@ -37,7 +40,10 @@ function startWorker() {
       stores.set(name, store);
       return {
         match: async (key: string | { url: string }) => store.get(absolute(key))?.clone(),
-        put: async (key: string | { url: string }, response: Response) => void store.set(absolute(key), response),
+        put: async (key: string | { url: string }, response: Response) => {
+          if (full) throw new Error("QuotaExceededError");
+          store.set(absolute(key), response);
+        },
         delete: async (key: string | { url: string }) => store.delete(absolute(key)),
         keys: async () => [...store.keys()].map((url) => ({ url })),
       };
@@ -75,6 +81,9 @@ function startWorker() {
     stores,
     fetched,
     offline: () => (online = false),
+    /** The network never answers. */
+    stall: () => (stalled = true),
+    fillStorage: () => (full = true),
     install: async () => {
       await dispatch("install");
       await dispatch("activate");
@@ -89,6 +98,15 @@ function startWorker() {
           headers: new Headers(init.headers),
         },
       }),
+    answer: (url: string) => {
+      let responded: Promise<Response> | undefined;
+      listeners.get("fetch")?.({
+        request: { url: new URL(url, ORIGIN).href, method: "GET", mode: "navigate", headers: new Headers() },
+        waitUntil: () => {},
+        respondWith: (p: Promise<Response>) => (responded = p),
+      });
+      return responded ?? Promise.resolve(undefined);
+    },
     cachedUrls: () => [...stores.values()].flatMap((store) => [...store.keys()]).sort(),
   };
 }
@@ -97,6 +115,8 @@ const SHELL = [`${ORIGIN}/`, `${ORIGIN}/assets/index-1.css`, `${ORIGIN}/assets/i
 
 describe("the service worker", () => {
   let worker: ReturnType<typeof startWorker>;
+
+  afterEach(() => vi.useRealTimers());
 
   beforeEach(async () => {
     worker = startWorker();
@@ -122,6 +142,33 @@ describe("the service worker", () => {
     const page = await worker.request("/", { mode: "navigate" });
 
     expect(await page?.text()).toContain("index-aaa.js");
+  });
+
+  it("stops waiting for a stalled network and opens the cached page", async () => {
+    vi.useFakeTimers();
+    worker.stall();
+    let page: Response | undefined;
+    // The worker is still waiting on the network, so ask for the answer rather than the whole event.
+    void worker.answer("/").then((response) => (page = response));
+
+    await vi.advanceTimersByTimeAsync(3000);
+
+    expect(await page?.text()).toContain("index-aaa.js");
+  });
+
+  it("opens the cached page when the server fails", async () => {
+    worker.network.set(`${ORIGIN}/`, () => new Response("Oops", { status: 503 }));
+
+    const page = await worker.request("/", { mode: "navigate" });
+
+    expect(await page?.text()).toContain("index-aaa.js");
+  });
+
+  it("still serves a file it has no room to keep", async () => {
+    worker.network.set(`${ORIGIN}/assets/late.js`, () => new Response("// late", { headers: { "content-type": "text/javascript" } }));
+    worker.fillStorage();
+
+    expect(await (await worker.request("/assets/late.js"))?.text()).toBe("// late");
   });
 
   it("takes the newly deployed page when online and drops the old files", async () => {

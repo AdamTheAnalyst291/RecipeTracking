@@ -30,9 +30,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function open(meals = [meal("a1", "2026-11-25", "dinner", "Lentil soup"), meal("a2", "2026-11-26", "lunch", "Flatbread")]) {
+const planned = () => [meal("a1", "2026-11-25", "dinner", "Lentil soup"), meal("a2", "2026-11-26", "lunch", "Flatbread")];
+
+function open({ meals = planned(), mealPlan = inMemoryMealPlanApi(meals), today = "2026-11-25" as string | null } = {}) {
   const user = userEvent.setup();
-  const mealPlan = inMemoryMealPlanApi(meals);
   render(
     <Kitchen
       mealPlan={mealPlan}
@@ -40,7 +41,7 @@ function open(meals = [meal("a1", "2026-11-25", "dinner", "Lentil soup"), meal("
       shopping={inMemoryShoppingApi()}
       pantry={{ apiUrl: "https://api.example.net", getToken: async () => "token", onSignedOut: () => {} }}
       account={<p>Signed in as Test User</p>}
-      today="2026-11-25"
+      today={today ?? undefined}
     />,
   );
   const nav = () => within(screen.getByRole("navigation", { name: "Main" }));
@@ -102,7 +103,7 @@ describe("Today", () => {
   });
 
   it("points to the plan when nothing is planned today", async () => {
-    const { user, current } = open([]);
+    const { user, current } = open({ meals: [] });
 
     await user.click(await screen.findByRole("button", { name: "Plan a meal" }));
 
@@ -112,17 +113,23 @@ describe("Today", () => {
   it("says so when the plan can't be loaded", async () => {
     const mealPlan = inMemoryMealPlanApi();
     mealPlan.week = () => Promise.reject(new Error("HTTP 500"));
-    render(
-      <Kitchen
-        mealPlan={mealPlan}
-        recipes={inMemoryRecipeApi()}
-        shopping={inMemoryShoppingApi()}
-        pantry={{ apiUrl: "https://api.example.net", getToken: async () => "token", onSignedOut: () => {} }}
-        account={null}
-        today="2026-11-25"
-      />,
-    );
+    open({ mealPlan });
 
     expect((await screen.findByRole("alert")).textContent).toContain("HTTP 500");
+  });
+
+  it("moves on to the new day when the app comes back after midnight", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 25, 23, 0));
+    // No fixed date: the device's clock decides.
+    open({ today: null });
+    await screen.findByText("Lentil soup");
+
+    vi.setSystemTime(new Date(2026, 10, 26, 7, 0));
+    document.dispatchEvent(new Event("visibilitychange"));
+
+    expect(await screen.findByText("Flatbread")).toBeTruthy();
+    expect(screen.queryByText("Lentil soup")).toBeNull();
+    vi.useRealTimers();
   });
 });
