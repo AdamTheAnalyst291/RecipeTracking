@@ -50,14 +50,18 @@ variable "auth_client_id" {
 }
 
 variable "database_exports" {
-  description = "Turns on the weekly export of the app database (card S2): a storage account for the exports, and write access for the backup identity whose service principal object ID is reader_object_id. Leave reader_object_id empty until that identity exists. null (the default) creates nothing."
-  type = object({
-    reader_object_id = string
-  })
-  default = null
+  description = "Turns on the weekly export of the app database (card S2): a storage account and container for the exports. Prod only."
+  type        = bool
+  default     = false
+}
+
+variable "backup_identity_object_id" {
+  description = "Service principal object ID of the backup identity (kitchen-github-<env>-backup), which may write the exports. Empty until infra/bootstrap creates it; nobody is granted the exports until then. Needs database_exports."
+  type        = string
+  default     = ""
 
   validation {
-    condition     = var.database_exports == null || var.database_exports.reader_object_id == "" || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.database_exports.reader_object_id))
-    error_message = "database_exports.reader_object_id must be empty or a service principal's object ID (a lowercase GUID)."
+    condition     = var.backup_identity_object_id == "" || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.backup_identity_object_id))
+    error_message = "backup_identity_object_id must be empty or a service principal's object ID (a lowercase GUID)."
   }
 }

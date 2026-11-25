@@ -117,7 +117,7 @@ run "prod_exports_its_database_weekly" {
   }
 
   assert {
-    condition     = length(module.environment.exports_writer_principal_ids) == 0
+    condition     = length(module.environment.exports_backup_identity_principal_ids) == 0
     error_message = "With no AZURE_BACKUP_PRINCIPAL_ID yet, nobody may write the exports."
   }
 }
@@ -130,12 +130,12 @@ run "the_backup_identity_may_write_prod_exports" {
   }
 
   assert {
-    condition     = module.environment.exports_writer_principal_ids == ["00000000-0000-0000-0000-000000000006"]
+    condition     = module.environment.exports_backup_identity_principal_ids == ["00000000-0000-0000-0000-000000000006"]
     error_message = "Prod must grant the export container to kitchen-github-prod-backup and nobody else."
   }
 
   assert {
-    condition     = module.environment.exports_writer_principal_ids != [var.deploy_identity_object_id]
+    condition     = module.environment.exports_backup_identity_principal_ids != [var.deploy_identity_object_id]
     error_message = "The backup job must not run as the Prod deploy identity."
   }
 }

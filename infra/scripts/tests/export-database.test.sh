@@ -7,6 +7,8 @@ set -uo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 script="$here/../export-database.sh"
 failures=0
+# shellcheck source=fake-az-storage.sh
+source "$here/fake-az-storage.sh"
 
 # setup <existing export names, space-separated> <sqlpackage failures before success> [bad]
 # The fake storage container is a folder; the fake `az` lists, uploads and deletes in it.
@@ -18,28 +20,7 @@ setup() {
   echo "${3:-good}" > "$work/bacpac_kind"
   : > "$work/calls"
 
-  cat > "$work/bin/az" <<EOF
-#!/usr/bin/env bash
-work="$work"
-EOF
-  cat >> "$work/bin/az" <<'EOF'
-echo "az $*" >> "$work/calls"
-arg() { local want="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = "$want" ] && { echo "$2"; return; }; shift; done; }
-case "$1 $2" in
-  "account get-access-token") echo "fake-sql-token" ;;
-  "storage blob")
-    case "$3" in
-      upload)
-        [ -f "$work/fail_upload" ] && { echo "upload refused" >&2; exit 1; }
-        name=$(arg --name "$@"); mkdir -p "$work/container/$(dirname "$name")"
-        cp "$(arg --file "$@")" "$work/container/$name" ;;
-      list)
-        prefix=$(arg --prefix "$@")
-        (cd "$work/container" && find . -type f | sed 's|^\./||' | grep "^$prefix" || true) ;;
-      delete) rm "$work/container/$(arg --name "$@")" ;;
-    esac ;;
-esac
-EOF
+  make_fake_az "$work/bin" "$work/container" "$work/calls" "$work/fail_upload"
 
   # Writes a bacpac (a zip, so it starts with PK) unless told to fail or write junk.
   cat > "$work/bin/sqlpackage" <<EOF
@@ -56,7 +37,7 @@ fi
 for a in "$@"; do case "$a" in /TargetFile:*) target="${a#/TargetFile:}" ;; esac; done
 if [ "$(cat "$work/bacpac_kind")" = bad ]; then echo "not a zip" > "$target"; else printf 'PK\003\004fake bacpac' > "$target"; fi
 EOF
-  chmod +x "$work/bin/az" "$work/bin/sqlpackage"
+  chmod +x "$work/bin/sqlpackage"
 }
 
 run_script() {

@@ -42,10 +42,12 @@ jobs:
       - name: Check that the backup is set up
         env:
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
           SQL_SERVER: ${{ vars.KITCHEN_SQL_SERVER }}
           BACKUP_STORAGE_ACCOUNT: ${{ vars.KITCHEN_EXPORTS_STORAGE_ACCOUNT }}
         run: |
-          if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$SQL_SERVER" ] || [ -z "$BACKUP_STORAGE_ACCOUNT" ]; then
+          if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_TENANT_ID" ] || [ -z "$AZURE_SUBSCRIPTION_ID" ] || [ -z "$SQL_SERVER" ] || [ -z "$BACKUP_STORAGE_ACCOUNT" ]; then
             echo "::error::The prod-backup GitHub Environment or its variables are missing. See infra/README.md, \"Backups\"."
             exit 1
           fi

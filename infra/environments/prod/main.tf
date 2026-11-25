@@ -78,9 +78,8 @@ module "environment" {
   key_vault_purge_protection = true
 
   # The weekly export of the database (card S2, .github/workflows/backup-prod.yml).
-  database_exports = {
-    reader_object_id = var.backup_identity_object_id
-  }
+  database_exports          = true
+  backup_identity_object_id = var.backup_identity_object_id
 }
 
 output "web_url" {

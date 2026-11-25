@@ -1,4 +1,4 @@
-export { backupReaderGrantsFile, ensureBackupReader, grantBackupReader, type BackupReader } from "./backupReader.js";
+export { ensureBackupReader, type BackupReader } from "./backupReader.js";
 export { connectEntra, type ConnectOptions } from "./connect.js";
 export { listMigrations, migrationsDir, runMigrations, type Migration } from "./migrate.js";
 export {

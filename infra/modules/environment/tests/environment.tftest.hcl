@@ -225,7 +225,7 @@ run "exports_go_to_a_versioned_soft_deleted_container_with_no_account_keys" {
 
   variables {
     environment      = "prod"
-    database_exports = { reader_object_id = "" }
+    database_exports = true
   }
 
   assert {
@@ -268,22 +268,23 @@ run "backup_reader_may_write_exports_and_nothing_else" {
   command = plan
 
   variables {
-    environment      = "prod"
-    database_exports = { reader_object_id = "00000000-0000-0000-0000-000000000006" }
+    environment               = "prod"
+    database_exports          = true
+    backup_identity_object_id = "00000000-0000-0000-0000-000000000006"
   }
 
   assert {
-    condition     = length(azurerm_role_assignment.exports_writer) == 1
+    condition     = length(azurerm_role_assignment.exports_backup_identity) == 1
     error_message = "The backup identity needs exactly one role assignment."
   }
 
   assert {
-    condition     = azurerm_role_assignment.exports_writer[0].role_definition_name == "Storage Blob Data Contributor"
+    condition     = azurerm_role_assignment.exports_backup_identity[0].role_definition_name == "Storage Blob Data Contributor"
     error_message = "The backup identity gets Storage Blob Data Contributor, which can't delete blob versions, never Owner."
   }
 
   assert {
-    condition     = azurerm_role_assignment.exports_writer[0].principal_id == "00000000-0000-0000-0000-000000000006" && azurerm_role_assignment.exports_writer[0].principal_type == "ServicePrincipal"
+    condition     = azurerm_role_assignment.exports_backup_identity[0].principal_id == "00000000-0000-0000-0000-000000000006" && azurerm_role_assignment.exports_backup_identity[0].principal_type == "ServicePrincipal"
     error_message = "The role must go to the backup identity's service principal."
   }
 }
@@ -293,21 +294,34 @@ run "no_role_assignment_until_the_backup_identity_exists" {
 
   variables {
     environment      = "prod"
-    database_exports = { reader_object_id = "" }
+    database_exports = true
   }
 
   assert {
-    condition     = length(azurerm_role_assignment.exports_writer) == 0
+    condition     = length(azurerm_role_assignment.exports_backup_identity) == 0
     error_message = "With no backup identity, nobody is granted access to the exports."
   }
 }
 
-run "rejects_a_reader_that_is_not_a_guid" {
+run "grants_nothing_while_exports_are_off" {
   command = plan
 
   variables {
-    database_exports = { reader_object_id = "kitchen-github-prod-backup" }
+    backup_identity_object_id = "00000000-0000-0000-0000-000000000006"
   }
 
-  expect_failures = [var.database_exports]
+  assert {
+    condition     = length(azurerm_role_assignment.exports_backup_identity) == 0
+    error_message = "Without database_exports there is no container to grant."
+  }
+}
+
+run "rejects_a_backup_identity_that_is_not_a_guid" {
+  command = plan
+
+  variables {
+    backup_identity_object_id = "kitchen-github-prod-backup"
+  }
+
+  expect_failures = [var.backup_identity_object_id]
 }

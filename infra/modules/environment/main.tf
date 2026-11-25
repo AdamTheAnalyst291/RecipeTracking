@@ -228,13 +228,8 @@ resource "azapi_resource" "app_database" {
 # those backups go when the server does. A weekly export (.github/workflows/backup-prod.yml)
 # keeps a copy here, apart from the database. Restore steps: infra/README.md, "Backups".
 
-locals {
-  exports_enabled = var.database_exports != null
-  exports_reader  = local.exports_enabled ? var.database_exports.reader_object_id : ""
-}
-
 resource "azurerm_storage_account" "exports" {
-  count = local.exports_enabled ? 1 : 0
+  count = var.database_exports ? 1 : 0
 
   name                            = "stkitchenbak${var.environment}${local.suffix}"
   resource_group_name             = var.resource_group_name
@@ -261,10 +256,16 @@ resource "azurerm_storage_account" "exports" {
       days = 30
     }
   }
+
+  lifecycle {
+    # Holds Prod's only copies of the database that outlive the server. Removing it takes
+    # deleting this line first, on purpose.
+    prevent_destroy = true
+  }
 }
 
 resource "azurerm_storage_container" "exports" {
-  count = local.exports_enabled ? 1 : 0
+  count = var.database_exports ? 1 : 0
 
   name                  = "database-exports"
   storage_account_id    = azurerm_storage_account.exports[0].id
@@ -274,7 +275,7 @@ resource "azurerm_storage_container" "exports" {
 # Versions left behind when the job prunes or overwrites an export are deleted 30 days
 # later, so storage stays at about 8 exports.
 resource "azurerm_storage_management_policy" "exports" {
-  count = local.exports_enabled ? 1 : 0
+  count = var.database_exports ? 1 : 0
 
   storage_account_id = azurerm_storage_account.exports[0].id
 
@@ -298,11 +299,11 @@ resource "azurerm_storage_management_policy" "exports" {
 # The backup identity (kitchen-github-<env>-backup) may add, read and delete exports in
 # this one container. Storage Blob Data Contributor can't delete blob versions or turn off
 # soft delete, so it can't destroy the history either.
-resource "azurerm_role_assignment" "exports_writer" {
-  count = local.exports_reader != "" ? 1 : 0
+resource "azurerm_role_assignment" "exports_backup_identity" {
+  count = var.database_exports && var.backup_identity_object_id != "" ? 1 : 0
 
   scope                = azurerm_storage_container.exports[0].id
   role_definition_name = "Storage Blob Data Contributor"
-  principal_id         = local.exports_reader
+  principal_id         = var.backup_identity_object_id
   principal_type       = "ServicePrincipal"
 }

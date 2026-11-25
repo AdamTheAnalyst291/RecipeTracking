@@ -19,6 +19,8 @@ read -ra sqlcmd <<< "$SQLCMD"
 read -ra sqlpackage <<< "${SQLPACKAGE:-sqlpackage}"
 
 here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=fake-az-storage.sh
+source "$here/fake-az-storage.sh"
 grants="$here/../../../packages/db/sql/backup-reader.sql"
 suffix="$(date +%s)$RANDOM"
 db="export_test_$suffix"
@@ -84,20 +86,7 @@ fi
 ok "the backup reader can't write"
 
 # Fake blob storage: the container is a folder.
-cat > "$work/bin/az" <<EOF
-#!/usr/bin/env bash
-container="$work/container"
-EOF
-cat >> "$work/bin/az" <<'EOF'
-arg() { local want="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = "$want" ] && { echo "$2"; return; }; shift; done; }
-case "$3" in
-  upload) name=$(arg --name "$@"); mkdir -p "$container/$(dirname "$name")"; cp "$(arg --file "$@")" "$container/$name" ;;
-  list) (cd "$container" && find . -type f | sed 's|^\./||' | grep "^$(arg --prefix "$@")" || true) ;;
-  delete) rm "$container/$(arg --name "$@")" ;;
-  *) echo "unexpected az call: $*" >&2; exit 1 ;;
-esac
-EOF
-chmod +x "$work/bin/az"
+make_fake_az "$work/bin" "$work/container" "$work/az-calls"
 
 echo "Exporting as $reader"
 PATH="$work/bin:$PATH" SQL_SERVER=localhost SQL_DATABASE="$db" BACKUP_STORAGE_ACCOUNT=local \

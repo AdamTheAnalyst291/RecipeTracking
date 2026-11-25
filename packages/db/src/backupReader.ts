@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import mssql from "mssql";
 
 /** The grants, shared with infra/scripts/tests/export-database.integration.sh. */
-export const backupReaderGrantsFile = fileURLToPath(new URL("../sql/backup-reader.sql", import.meta.url));
+const backupReaderGrantsFile = fileURLToPath(new URL("../sql/backup-reader.sql", import.meta.url));
 
 /** The identity that runs the weekly export (card S2), such as kitchen-github-prod-backup. */
 export interface BackupReader {

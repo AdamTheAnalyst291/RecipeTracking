@@ -80,7 +80,7 @@ Set `environments = ["dev", "uat", "prod"]` in `terraform.tfvars`, apply again, 
 - **API:** a Linux Functions app on Flex Consumption (Node 24) with a system-assigned managed identity. It reaches its own storage account (deployment package and host state) with that identity, not a key, and allows calls from the web app's address (plus `http://localhost:5173` in Dev).
 - **Key Vault** with Azure RBAC. The API's identity has Key Vault Secrets User, so it can read secrets and nothing else, and finds the vault through its `KITCHEN_KEY_VAULT_URI` app setting. Terraform never sees secret values.
 - **Azure SQL:** a server that accepts Microsoft Entra sign-in only, with the environment's deploy identity (`kitchen-github-<env>`) as its admin so the pipeline can run migrations, and a firewall that lets in Azure services only. Its database uses the free offer and pauses for the rest of the month instead of billing when the free allowance runs out.
-- **Database exports** (Prod only, `database_exports`): a storage account `stkitchenbak<env><suffix>` with Entra sign-in only, blob versioning, 30-day soft delete and a private `database-exports` container, where the weekly export writes. See "Backups".
+- **Database exports** (Prod only, `database_exports`): a storage account (Terraform refuses to destroy it) `stkitchenbak<env><suffix>` with Entra sign-in only, blob versioning, 30-day soft delete and a private `database-exports` container, where the weekly export writes. See "Backups".
 
 Names carry a suffix derived from the subscription, environment and region, so they stay the same from run to run. The Deploy Dev run's summary lists them.
 
@@ -214,7 +214,7 @@ az sql db show -g rg-kitchen-prod -s "$srv" -n sqldb-kitchen-app --query earlies
 
 ### How the weekly export works
 
-The **Backup Prod** workflow (`.github/workflows/backup-prod.yml`) runs every Sunday at 07:17 UTC. You can also start it from **Actions → Backup Prod → Run workflow** on `main`. It runs `infra/scripts/export-database.sh`, which:
+The **Backup Prod** workflow (`.github/workflows/backup-prod.yml`) runs every Sunday at 07:17 UTC. You can also start it from **Actions → Backup Prod → Run workflow** on `main`. Each run counts as one of the 8, so extra runs by hand shorten how far back the exports go. It runs `infra/scripts/export-database.sh`, which:
 
 1. exports `sqldb-kitchen-app` with SqlPackage
 2. checks the file is a bacpac
@@ -242,7 +242,7 @@ Every job in the `prod` GitHub Environment waits for your approval, so a schedul
 - **The `prod-backup` GitHub Environment** has no required reviewer and accepts runs from `main` only. Only the schedule and people with write access can start the workflow, and no pull request reaches it.
 - **The `kitchen-github-prod-backup` identity** is created by the bootstrap. Its only credential trusts `environment:prod-backup`, and it has no Azure role on any resource or resource group. It gets two rights:
   - **Storage Blob Data Contributor on the `database-exports` container**, granted by Prod's Terraform. It can add, read and delete blobs, but it can't delete versions, so it can't destroy the 30-day history.
-  - **`db_datareader` and `VIEW DEFINITION`** as a database user (`packages/db/sql/backup-reader.sql`), created by the Deploy Prod migration step. That's enough for SqlPackage (CI proves it), with no write access.
+  - **`db_datareader` and `VIEW DEFINITION`** as a database user (`packages/db/sql/backup-reader.sql`), created by the Deploy Prod migration step. CI shows that's enough for SqlPackage and gives no write access, on SQL Server 2022 with a SQL login standing in for the Entra user. The first run in Azure (step 4 below) confirms it there.
 
 If this identity were stolen, the worst it could do is read the Prod database, as anyone holding a backup could, and delete the current exports, which you could still recover for 30 days.
 
@@ -350,22 +350,23 @@ srv=$(az sql server list -g $rg --query "[0].name" -o tsv)
 az sql db show -g $rg -s "$srv" -n sqldb-kitchen-app --query earliestRestoreDate   # how far back you can go
 
 az sql db restore -g $rg -s "$srv" -n sqldb-kitchen-app --dest-name sqldb-kitchen-pitr \
-  --time 2026-12-06T18:00:00Z \
+  --time <yyyy-mm-ddThh:mm:ssZ> \
   -e GeneralPurpose -f Gen5 -c 1 --compute-model Serverless --auto-pause-delay 60 --backup-storage-redundancy Local
 ```
 
-`--time` is in UTC. A database deleted in the last 7 days shows up in `az sql db list-deleted -g $rg -s "$srv"`. Restore it the same way, adding `--deleted-time` from that list.
+Set `--time` to the moment you want, in UTC, no earlier than `earliestRestoreDate`. A database deleted in the last 7 days shows up in `az sql db list-deleted -g $rg -s "$srv"`. Restore it the same way, adding `--deleted-time` from that list.
 
-Only `kitchen-github-prod` can sign in to Prod's server. To look inside the restored copy, copy it to a scratch server where you're the admin: do steps 3 and 5 of the drill, skipping the free database, and run:
+Only `kitchen-github-prod` can sign in to Prod's server. To look inside the restored copy, copy it to a scratch server where you're the admin. First set the drill's variables (the lines before step 1), and do its step 3 without the `az sql db create` line. Then run:
 
 ```bash
 az sql db copy -g $rg -s "$srv" -n sqldb-kitchen-pitr --dest-server "$scratch" --dest-name kitchen-pitr
 az sql db delete -g $rg -s "$srv" -n sqldb-kitchen-pitr --yes   # the copy on Prod's server isn't needed any more
 ```
 
-To put it back into Prod (below), export it to a bacpac first:
+Open `kitchen-pitr` as in step 5 of the drill. To put it back into Prod (below), export it to a bacpac first:
 
 ```bash
+token=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv)
 dotnet tool run sqlpackage /Action:Export /SourceServerName:"$scratch.database.windows.net" /SourceDatabaseName:kitchen-pitr \
   /AccessToken:"$token" /TargetFile:restore.bacpac
 ```
@@ -390,16 +391,21 @@ Do this only if Prod's data is lost or wrong and the app must run on the restore
      --max-size 32GB --backup-storage-redundancy Local --zone-redundant false --tags app=kitchen environment=prod managed_by=terraform
    ```
 
-3. Import the bacpac into it. Only the server's admin can, and that's `kitchen-github-prod`, so make yourself admin for the import. This locks the pipeline out of the database until step 4, so don't deploy anything else in between.
+3. Import the bacpac into it. Only the server's admin can, and that's `kitchen-github-prod`, so make yourself admin for the import. This locks the pipeline out of the database until step 4, so don't deploy anything else in between. Prod's firewall lets in Azure services only, so also let in your IP for the import, and remove it afterwards.
 
    ```bash
    az sql server ad-admin create -g $rg -s "$srv" --display-name "$upn" --object-id "$me"
+   ip=$(curl -s https://api.ipify.org)
+   az sql server firewall-rule create -g $rg -s "$srv" -n restore-import --start-ip-address "$ip" --end-ip-address "$ip"
    token=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv)
    dotnet tool run sqlpackage /Action:Import /SourceFile:restore.bacpac \
      /TargetServerName:"$srv.database.windows.net" /TargetDatabaseName:sqldb-kitchen-app /AccessToken:"$token"
+   az sql server firewall-rule delete -g $rg -s "$srv" -n restore-import
    ```
 
-4. **Deploy Prod** (Run workflow, then approve). Terraform makes `kitchen-github-prod` the admin again and brings the new database's settings in line. The migrations add anything newer than the backup, and the backup user is checked. Open the app and check the data.
+   The bacpac brings its database users with it, such as `kitchen-github-prod-backup`, so they work again without being recreated.
+
+4. **Deploy Prod** (Run workflow, then approve). Terraform makes `kitchen-github-prod` the admin again and brings the new database's settings in line (check the plan step's log: it should update the database in place, never replace it). The migrations add anything newer than the backup, and the backup user is checked. Open the app and check the data.
 
 5. When you're sure, delete `sqldb-kitchen-app-damaged`. It's free, but it uses one of the subscription's 10 free databases.
 
