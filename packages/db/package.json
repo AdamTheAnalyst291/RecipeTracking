@@ -26,7 +26,7 @@
     "import:grocy": "pnpm run build && node dist/import-grocy.js"
   },
   "dependencies": {
-    "mssql": "12.7.16"
+    "mssql": "12.8.0"
   },
   "devDependencies": {
     "@types/mssql": "12.3.0",

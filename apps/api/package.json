@@ -15,7 +15,7 @@
     "@kitchen/db": "workspace:*",
     "@kitchen/shared": "workspace:*",
     "jose": "6.2.18",
-    "mssql": "12.7.16"
+    "mssql": "12.8.0"
   },
   "devDependencies": {
     "@types/node": "26.6.6",
