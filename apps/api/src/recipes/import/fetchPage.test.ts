@@ -82,11 +82,13 @@ describe("fetching a page", () => {
     "/huge": (_q, res) => res.writeHead(200, { "content-type": "text/html" }).end("a".repeat(100_000)),
     "/endless": (_q, res) => {
       res.writeHead(200, { "content-type": "text/html" });
-      const timer = setInterval(() => res.write("a".repeat(1000)), 1);
+      const timer = setInterval(() => res.write("a".repeat(20_000)), 1);
       res.on("close", () => clearInterval(timer));
     },
     "/slow": (_q, res) => void res.writeHead(200, { "content-type": "text/html" }).write("<p>"),
     "/silent": () => undefined,
+    // A reply that switches protocols never becomes an ordinary response.
+    "/upgrade": (req) => void req.socket.write(["HTTP/1.1 101 Switching Protocols", "Upgrade: made-up", "Connection: Upgrade", "", ""].join("\r\n")),
     "/moved": (_q, res) => res.writeHead(301, { location: "/page" }).end(),
     "/to-private": (_q, res) => res.writeHead(302, { location: "http://10.0.0.1/" }).end(),
     "/to-file": (_q, res) => res.writeHead(302, { location: "file:///etc/passwd" }).end(),
@@ -135,6 +137,7 @@ describe("fetching a page", () => {
     ["/endless", "too_large"],
     ["/slow", "timeout"],
     ["/silent", "timeout"],
+    ["/upgrade", "unreachable"],
     ["/to-private", "blocked"],
     ["/to-file", "invalid_url"],
     ["/loop", "unreachable"],

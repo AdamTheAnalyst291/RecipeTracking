@@ -1,9 +1,12 @@
 import type { HttpResponseInit } from "@azure/functions";
-import type { RecipeImportResponse } from "@kitchen/shared";
+import { RECIPE_LIMITS, type RecipeImportResponse } from "@kitchen/shared";
 import type { AuthenticatedHandler } from "../auth.js";
 import { PageFetchError, type FetchErrorCode, type FetchPage } from "../recipes/import/fetchPage.js";
 import { readRecipePage, type ReadPage } from "../recipes/import/recipePage.js";
 import type { RecipeStore } from "../recipes/store.js";
+
+/** The part of the recipe store that matching a page's ingredients needs. */
+type Matchable = Pick<RecipeStore, "units" | "foods">;
 
 const STATUS: Record<FetchErrorCode, number> = {
   invalid_url: 400,
@@ -28,7 +31,7 @@ const refuse = (status: number, message: string): HttpResponseInit => ({ status,
  * person to check. Nothing is saved; saving is the ordinary `POST /recipes`.
  */
 export function createRecipeImportHandler(
-  getStore: () => Pick<RecipeStore, "units" | "foods"> | Promise<Pick<RecipeStore, "units" | "foods">>,
+  getStore: () => Matchable | Promise<Matchable>,
   fetchPage: FetchPage,
 ): AuthenticatedHandler {
   return async (request, _context, user) => {
@@ -39,7 +42,7 @@ export function createRecipeImportHandler(
     } catch {
       // not JSON: handled below
     }
-    if (url === "" || url.length > 2000) return refuse(400, "Paste the recipe page's web address.");
+    if (url === "" || url.length > RECIPE_LIMITS.url) return refuse(400, "Paste the recipe page's web address.");
 
     try {
       const page = await fetchPage(url);

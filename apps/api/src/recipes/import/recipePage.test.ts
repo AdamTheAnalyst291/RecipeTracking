@@ -102,6 +102,30 @@ describe("reading a recipe from a page", () => {
     expect(result.ok && parseRecipeInput(result.recipe).ok).toBe(true);
   });
 
+  it("reads the long form of a duration", () => {
+    const result = read(jsonLd({ "@type": "Recipe", name: "Eggs", totalTime: "P0Y0M0DT0H35M0.000S" }));
+
+    expect(result.ok && result.recipe.totalMinutes).toBe(35);
+  });
+
+  it("leaves unknown entities alone, even ones named like object internals", () => {
+    const result = read(jsonLd({ "@type": "Recipe", name: "Pie &toString; &constructor;" }));
+
+    expect(result.ok && result.recipe.name).toBe("Pie &toString; &constructor;");
+  });
+
+  it("stays quick when a page lists thousands of authors by reference", () => {
+    const html = jsonLd([
+      { "@type": "Recipe", name: "Soup", author: Array.from({ length: 100_000 }, () => ({ "@id": "z" })) },
+      Array.from({ length: 20_000 }, (_, i) => ({ "@id": `n${i}` })),
+    ]);
+    const started = Date.now();
+
+    read(html);
+
+    expect(Date.now() - started).toBeLessThan(2000);
+  });
+
   it("stays quick on a page built to make parsing slow", () => {
     const hostile = jsonLd({ "@type": "Recipe", name: "<a".repeat(200_000), recipeIngredient: [`1${" ".repeat(200_000)}x`] });
     const started = Date.now();

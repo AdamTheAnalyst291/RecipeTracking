@@ -1,4 +1,4 @@
-import type { RecipeInput } from "@kitchen/shared";
+import { RECIPE_LIMITS, type RecipeInput } from "@kitchen/shared";
 import { createIngredientParser, type Known } from "./ingredientLine.js";
 
 /**
@@ -17,7 +17,7 @@ const listOf = (v: unknown): unknown[] => (Array.isArray(v) ? v : v === undefine
 
 const MAX_BLOCKS = 50;
 const MAX_NODES = 20_000;
-const MAX_LINES = 200;
+const MAX_AUTHORS = 5;
 const MAX_TAGS = 20;
 
 /** The contents of every `<script type="application/ld+json">`. Scans forward only. */
@@ -81,7 +81,7 @@ const ENTITIES: Record<string, string> = {
 
 const decode = (text: string) =>
   text.replace(/&(#x?[0-9a-f]{1,6}|[a-z][a-z0-9]{1,8});/gi, (whole, entity: string) => {
-    if (!entity.startsWith("#")) return ENTITIES[entity] ?? whole;
+    if (!entity.startsWith("#")) return Object.hasOwn(ENTITIES, entity) ? (ENTITIES[entity] as string) : whole;
     const code = entity[1]?.toLowerCase() === "x" ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
     return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : whole;
   });
@@ -102,16 +102,17 @@ const cut = (text: string, max: number): string => text.slice(0, max).trim();
 
 /** Minutes in an ISO 8601 duration like `PT1H30M`, or null. */
 function minutesOf(value: unknown): number | null {
-  const parts = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:\d+(?:\.\d+)?S)?)?$/i.exec(plain(value));
+  // Years, months and weeks are only accepted as zero, which some sites write out in full.
+  const parts = /^P(?:0+Y)?(?:0+M)?(?:0+W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:\d+(?:\.\d+)?S)?)?$/i.exec(plain(value));
   if (!parts || parts.slice(1).every((p) => p === undefined)) return null;
   const minutes = Number(parts[1] ?? 0) * 1440 + Number(parts[2] ?? 0) * 60 + Number(parts[3] ?? 0);
-  return minutes > 0 && minutes <= 1_000_000 ? minutes : null;
+  return minutes > 0 && minutes <= RECIPE_LIMITS.number ? minutes : null;
 }
 
 function servingsOf(value: unknown): number | null {
   for (const item of listOf(value)) {
     const number = Number(/\d+/.exec(plain(item))?.[0] ?? 0);
-    if (number >= 1 && number <= 1_000_000) return number;
+    if (number >= 1 && number <= RECIPE_LIMITS.number) return number;
   }
   return null;
 }
@@ -120,7 +121,7 @@ function servingsOf(value: unknown): number | null {
 function stepsOf(value: unknown, depth = 0): string[] {
   if (depth > 5) return [];
   if (typeof value === "string") return lines(value);
-  if (Array.isArray(value)) return value.slice(0, MAX_LINES).flatMap((item) => stepsOf(item, depth + 1));
+  if (Array.isArray(value)) return value.slice(0, RECIPE_LIMITS.lines).flatMap((item) => stepsOf(item, depth + 1));
   if (!isObject(value)) return [];
   if (value.itemListElement !== undefined) return stepsOf(value.itemListElement, depth + 1);
   if (value.item !== undefined) return stepsOf(value.item, depth + 1);
@@ -139,7 +140,7 @@ function tagsOf(recipe: Json): string[] {
   for (const value of values) {
     const tag = plain(value);
     // A "tag" too long for the field is a sentence, not a tag.
-    if (tag === "" || tag.length > 50 || seen.has(tag.toLowerCase())) continue;
+    if (tag === "" || tag.length > RECIPE_LIMITS.tag || seen.has(tag.toLowerCase())) continue;
     seen.add(tag.toLowerCase());
     tags.push(tag);
     if (tags.length === MAX_TAGS) break;
@@ -149,15 +150,16 @@ function tagsOf(recipe: Json): string[] {
 
 /** The author's or publisher's name (which may be a reference elsewhere in the data), else the site. */
 function creditOf(recipe: Json, nodes: Json[], pageUrl: string): string {
-  for (const person of [...listOf(recipe.author), ...listOf(recipe.publisher)]) {
-    let name = plain(isObject(person) ? person.name : person);
-    if (!name && isObject(person) && typeof person["@id"] === "string") {
-      const id = person["@id"];
-      name = plain(nodes.find((node) => node["@id"] === id && node.name !== undefined)?.name);
-    }
-    if (name) return cut(name, 200);
+  const named = new Map<unknown, unknown>();
+  for (const node of nodes) {
+    if (typeof node["@id"] === "string" && node.name !== undefined && !named.has(node["@id"])) named.set(node["@id"], node.name);
   }
-  return cut(new URL(pageUrl).hostname.replace(/^www\./, ""), 200);
+  const people = [...listOf(recipe.author).slice(0, MAX_AUTHORS), ...listOf(recipe.publisher).slice(0, MAX_AUTHORS)];
+  for (const person of people) {
+    const name = plain(isObject(person) ? person.name : person) || (isObject(person) ? plain(named.get(person["@id"])) : "");
+    if (name) return cut(name, RECIPE_LIMITS.credit);
+  }
+  return cut(new URL(pageUrl).hostname.replace(/^www\./, ""), RECIPE_LIMITS.credit);
 }
 
 export function readRecipePage(html: string, pageUrl: string, known: Known): ReadPage {
@@ -174,7 +176,7 @@ export function readRecipePage(html: string, pageUrl: string, known: Known): Rea
 
   const parse = createIngredientParser(known);
   const ingredients = listOf(recipe.recipeIngredient ?? recipe.ingredients)
-    .slice(0, MAX_LINES)
+    .slice(0, RECIPE_LIMITS.lines)
     .flatMap((item) => parse(plain(item)) ?? []);
 
   const prepAndCook = (minutesOf(recipe.prepTime) ?? 0) + (minutesOf(recipe.cookTime) ?? 0);
@@ -190,16 +192,16 @@ export function readRecipePage(html: string, pageUrl: string, known: Known): Rea
     ok: true,
     newFoods: [...newFoods.values()],
     recipe: {
-      name: cut(plain(recipe.name), 200),
+      name: cut(plain(recipe.name), RECIPE_LIMITS.name),
       servings: servingsOf(recipe.recipeYield ?? recipe.yield),
       totalMinutes,
-      sourceUrl: pageUrl.length <= 2000 ? pageUrl : null,
+      sourceUrl: pageUrl.length <= RECIPE_LIMITS.url ? pageUrl : null,
       sourceCredit: creditOf(recipe, nodes, pageUrl),
       tags: tagsOf(recipe),
       ingredients,
       steps: stepsOf(recipe.recipeInstructions)
-        .map((step) => cut(step, 4000))
-        .slice(0, MAX_LINES),
+        .map((step) => cut(step, RECIPE_LIMITS.step))
+        .slice(0, RECIPE_LIMITS.lines),
     },
   };
 }

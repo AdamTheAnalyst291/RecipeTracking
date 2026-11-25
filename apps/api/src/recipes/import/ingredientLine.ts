@@ -1,5 +1,5 @@
 import { matchUnit } from "@kitchen/db";
-import type { RecipeIngredient, Unit } from "@kitchen/shared";
+import { RECIPE_LIMITS, type RecipeIngredient, type Unit } from "@kitchen/shared";
 
 /** What the household already has, for matching a page's wording to it. */
 export interface Known {
@@ -22,9 +22,11 @@ const CONTAINERS = new Set(
   ["pinch", "dash", "clove", "can", "tin", "jar", "package", "packet", "pkg", "bunch", "sprig", "slice", "stick", "head", "handful", "stalk", "bag", "bottle", "box", "drop", "splash"]
     .flatMap((word) => [word, `${word}s`, `${word}es`]),
 );
-const SIZES = new Set(["small", "medium", "large", "heaping", "scant"]);
+const SIZES = new Set(["small", "medium", "large", "heaping", "heaped", "rounded", "level", "scant"]);
 /** Words that describe how a food is prepared or sized without making it a different food. */
 const DESCRIPTORS = new Set([...SIZES, "fresh", "freshly", "finely", "roughly", "coarsely", "thinly", "chopped", "minced", "diced", "sliced", "grated", "ripe", "organic"]);
+/** Words that can stand before a comma without naming a food: "boneless, skinless chicken". */
+const ADJECTIVES = new Set([...DESCRIPTORS, "boneless", "skinless", "packed", "firmly", "lightly", "peeled", "seeded", "pitted", "cooked", "uncooked", "raw", "lean", "soft", "softened", "melted", "cold", "warm"]);
 const TRAILING = / (to taste|for serving|for garnish|as needed|divided|optional)$/i;
 
 function valueOf(number: string): number {
@@ -38,7 +40,25 @@ function valueOf(number: string): number {
 /** A quantity the recipe table can hold (four decimals, above zero), or null. */
 function storable(value: number): number | null {
   const rounded = Math.round(value * 10_000) / 10_000;
-  return Number.isFinite(rounded) && rounded > 0 && rounded <= 1_000_000 ? rounded : null;
+  return Number.isFinite(rounded) && rounded > 0 && rounded <= RECIPE_LIMITS.number ? rounded : null;
+}
+
+const MIXED = new RegExp(`^(\\d+) ?(?:-|and|&) ?(\\d+/\\d+|${FRACTION})`);
+
+/** One spelling for the ways pages write fractions: "1⁄2", "1-1/2", "1 and 1/2". */
+const plainFractions = (line: string): string => line.replaceAll("\u2044", "/").replace(MIXED, "$1 $2");
+
+/** Takes the bracketed asides out of a line, including doubled brackets. */
+function withoutAsides(line: string): { rest: string; asides: string[] } {
+  const asides: string[] = [];
+  let rest = line;
+  for (let depth = 0; depth < 3; depth++) {
+    rest = rest.replace(/\(([^()]*)\)/g, (_, aside: string) => {
+      if (aside.trim()) asides.push(aside.trim());
+      return " ";
+    });
+  }
+  return { rest: rest.replace(/\s+/g, " ").trim(), asides };
 }
 
 /** The spellings a food might be filed under: as written, singular and plural. */
@@ -80,12 +100,9 @@ export function createIngredientParser({ units, foods }: Known): (line: string) 
     if (line === "") return null;
 
     const notes: string[] = [];
-    const asides: string[] = [];
-    let rest = line.replace(/\(([^()]*)\)/g, (_, aside: string) => {
-      if (aside.trim()) asides.push(aside.trim());
-      return " ";
-    });
-    rest = rest.replace(/\s+/g, " ").trim();
+    const aside = withoutAsides(plainFractions(line));
+    const asides = aside.asides;
+    let rest = aside.rest;
 
     let quantity: number | null = null;
     const amount = QUANTITY.exec(rest);
@@ -94,6 +111,12 @@ export function createIngredientParser({ units, foods }: Known): (line: string) 
       quantity = storable(valueOf(amount[1]));
       if (amount[2]) notes.push(amount[0]);
       rest = rest.slice(amount[0].length).trim();
+      // "2 x 400g tins": two of a 400 g thing.
+      const each = /^[x×] ?(\d+(?:\.\d+)? ?(?:g|kg|ml|l|oz|lb))\b/i.exec(rest);
+      if (each?.[1]) {
+        notes.push(each[1]);
+        rest = rest.slice(each[0].length).trim();
+      }
     }
 
     let words = rest.split(" ");
@@ -101,6 +124,17 @@ export function createIngredientParser({ units, foods }: Known): (line: string) 
     let article: string | null = null;
     if (quantity === null && /^an?$/i.test(words[0] ?? "") && CONTAINERS.has((words[1] ?? "").toLowerCase())) {
       article = words.shift() ?? null;
+    }
+    // "200 g/7oz": the first measure counts, the other goes in the note.
+    const [first = "", other] = (words[0] ?? "").split(/\/(?=\d)/);
+    if (quantity !== null && other !== undefined && unitFor(first) !== undefined) {
+      words = [first, ...words.slice(1)];
+      notes.push(other);
+    }
+    // "2 heaped tbsp": the size word comes before the unit.
+    if (quantity !== null && words.length > 2 && SIZES.has((words[0] ?? "").toLowerCase()) && unitFor(words[1] ?? "") !== undefined) {
+      notes.push(words[0] ?? "");
+      words = words.slice(1);
     }
     if (quantity !== null && words.length > 2) {
       const two = unitFor(`${words[0]} ${words[1]}`);
@@ -119,7 +153,7 @@ export function createIngredientParser({ units, foods }: Known): (line: string) 
     let contained = false;
     if (unit === null) {
       const at = SIZES.has((words[0] ?? "").toLowerCase()) ? 1 : 0;
-      if (words.length > at + 1 && CONTAINERS.has((words[at] ?? "").toLowerCase())) {
+      if (words.length > at + 1 && CONTAINERS.has((words[at] ?? "").toLowerCase().replace(/\.$/, ""))) {
         notes.push([article, ...words.slice(0, at + 1)].filter(Boolean).join(" "));
         words = words.slice(at + 1);
         contained = true;
@@ -127,7 +161,11 @@ export function createIngredientParser({ units, foods }: Known): (line: string) 
     }
     if (words[0]?.toLowerCase() === "of") words = words.slice(1);
 
-    const [head = "", ...tail] = words.join(" ").split(",");
+    const [opening = "", ...tail] = words.join(" ").split(",");
+    let head = opening;
+    while (tail.length > 0 && head.trim().split(" ").every((word) => ADJECTIVES.has(word.toLowerCase()))) {
+      head = `${head.trim()} ${(tail.shift() ?? "").trim()}`;
+    }
     let name = head.trim();
     let trailing: string | null = null;
     const ending = TRAILING.exec(name);
@@ -151,9 +189,9 @@ export function createIngredientParser({ units, foods }: Known): (line: string) 
     food ??= name;
 
     // Nothing left to call a food: keep the whole line so the person can sort it out.
-    if (food === "") return { food: line.slice(0, 200), quantity: null, unit: null, note: null };
+    if (food === "") return { food: line.slice(0, RECIPE_LIMITS.name), quantity: null, unit: null, note: null };
 
     const note = [...asides, ...notes, trailing, tail.join(",").trim()].filter(Boolean).join(", ");
-    return { food: food.slice(0, 200).trim(), quantity, unit, note: note.slice(0, 500).trim() || null };
+    return { food: food.slice(0, RECIPE_LIMITS.name).trim(), quantity, unit, note: note.slice(0, RECIPE_LIMITS.note).trim() || null };
   };
 }

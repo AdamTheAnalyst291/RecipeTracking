@@ -109,6 +109,8 @@ export function createPageFetcher(options: FetcherOptions = {}): FetchPage {
 
   /** The addresses to connect to, all of them allowed. */
   async function addressesOf(url: URL, signal: AbortSignal): Promise<Address[]> {
+    // The abort event has already fired by now if a redirect used up the time.
+    if (signal.aborted) throw timedOut();
     const host = url.hostname.replace(/^\[|\]$/g, "");
     let addresses: Address[];
     if (isIP(host)) {
@@ -159,6 +161,9 @@ export function createPageFetcher(options: FetcherOptions = {}): FetchPage {
         done,
       );
       request.on("error", fail);
+      // Neither a response nor an error arrives when a server "switches protocols".
+      request.on("upgrade", (_response, socket) => socket.destroy());
+      request.on("close", () => fail(unreachable()));
       request.end();
     });
   }
