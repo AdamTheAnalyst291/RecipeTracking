@@ -1,0 +1,15 @@
+{
+  "_note": "Made up for tests and the Dev sample import; the repo is public. Shaped like Plaid's /transactions/sync: amounts in dollars, positive is money leaving the account.",
+  "accounts": [
+    { "account_id": "acc-checking-0001", "name": "Everyday Checking", "mask": "0000" },
+    { "account_id": "acc-card-0002", "name": "Rewards Card", "mask": "1111" }
+  ],
+  "transactions": [
+    { "transaction_id": "tx-0001", "account_id": "acc-checking-0001", "date": "2026-11-02", "amount": 84.37, "name": "SAMPLE GROCER #12 ANYTOWN", "merchant_name": "Sample Grocer", "original_description": "SAMPLE GROCER #12 ANYTOWN", "pending": false },
+    { "transaction_id": "tx-0002", "account_id": "acc-checking-0001", "date": "2026-11-03", "amount": 12.5, "name": "CORNER BAKERY CAFE", "merchant_name": "Corner Bakery", "original_description": "CORNER BAKERY CAFE", "pending": false },
+    { "transaction_id": "tx-0003", "account_id": "acc-card-0002", "date": "2026-11-04", "amount": 41.06, "name": "FRESHMART 0042", "merchant_name": null, "original_description": "FRESHMART 0042 MAIN ST", "pending": false },
+    { "transaction_id": "tx-0004", "account_id": "acc-checking-0001", "date": "2026-11-05", "amount": -1500, "name": "PAYROLL EXAMPLE CO", "merchant_name": null, "original_description": "PAYROLL EXAMPLE CO DIRECT DEP", "pending": false },
+    { "transaction_id": "tx-0005", "account_id": "acc-card-0002", "date": "2026-11-06", "amount": 9.99, "name": "STREAMFLIX", "merchant_name": "Streamflix", "original_description": "STREAMFLIX MONTHLY", "pending": false },
+    { "transaction_id": "tx-0006", "account_id": "acc-card-0002", "date": "2026-11-07", "amount": 23.15, "name": "SAMPLE GROCER #12 ANYTOWN", "merchant_name": "Sample Grocer", "original_description": "SAMPLE GROCER #12 ANYTOWN", "pending": true }
+  ]
+}
