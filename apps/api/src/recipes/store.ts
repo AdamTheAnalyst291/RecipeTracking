@@ -16,6 +16,8 @@ export interface RecipeStore {
   /** False when this household has no such recipe. */
   remove(user: SignedInUser, id: string): Promise<boolean>;
   units(): Promise<Unit[]>;
+  /** The names in the household's food table. */
+  foods(user: SignedInUser): Promise<string[]>;
 }
 
 const UNIQUE_VIOLATION = [2601, 2627];
@@ -218,6 +220,13 @@ export function createSqlRecipeStore(pool: mssql.ConnectionPool): RecipeStore {
         "DELETE recipe WHERE id = @id AND household_id = @h",
       );
       return (deleted.rowsAffected[0] ?? 0) > 0;
+    },
+
+    async foods(user) {
+      const rows = await pool.request().input("h", GUID, await householdId(user)).query(
+        "SELECT name FROM food WHERE household_id = @h ORDER BY name",
+      );
+      return rows.recordset.map((f) => f.name as string);
     },
 
     async units() {

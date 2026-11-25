@@ -37,6 +37,18 @@ export interface RecipeListResponse {
   recipes: RecipeSummary[];
 }
 
+/** Body of `POST /api/recipe-import`: the recipe page to read. */
+export interface RecipeImportRequest {
+  url: string;
+}
+
+/** A recipe read from a web page, not yet saved: the person checks it, then saves it as usual. */
+export interface RecipeImportResponse {
+  recipe: RecipeInput;
+  /** Foods the draft names that the household doesn't have yet; saving adds them. */
+  newFoods: string[];
+}
+
 export interface Unit {
   name: string;
   abbreviation: string;

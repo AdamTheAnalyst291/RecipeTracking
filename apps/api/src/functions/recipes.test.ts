@@ -5,7 +5,7 @@ import type { Recipe, RecipeInput, RecipeListResponse, UnitListResponse } from "
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withAuth } from "../auth.js";
 import { createSqlRecipeStore } from "../recipes/store.js";
-import { SOMEONE_ELSE, testAuthenticator, token } from "../test/identity.js";
+import { ADAM, SOMEONE_ELSE, testAuthenticator, testConfig, token } from "../test/identity.js";
 import { createRecipeHandlers } from "./recipes.js";
 
 // Made-up recipes; the repo is public.
@@ -36,11 +36,13 @@ const flatbread: RecipeInput = {
 describe.skipIf(!testServer)("recipe API", () => {
   let drop: () => Promise<void>;
   let handlers: ReturnType<typeof createRecipeHandlers>;
+  let pool: Awaited<ReturnType<typeof createEmptyDatabase>>["pool"];
   const context = new InvocationContext();
 
   beforeAll(async () => {
     const database = await createEmptyDatabase();
     drop = database.drop;
+    pool = database.pool;
     await runMigrations(database.pool);
     const store = createSqlRecipeStore(database.pool);
     handlers = createRecipeHandlers(() => store);
@@ -76,6 +78,13 @@ describe.skipIf(!testServer)("recipe API", () => {
     expect(response.status).toBe(201);
     return response.jsonBody as Recipe;
   };
+
+  it("names the household's foods, for matching imported ingredients", async () => {
+    await create();
+    const user = { objectId: ADAM, name: "Test User", household: testConfig.household };
+
+    expect(await createSqlRecipeStore(pool).foods(user)).toEqual(expect.arrayContaining(["Red lentils", "Salt"]));
+  });
 
   describe("create", () => {
     it("saves a recipe and reads it back with its ingredients and steps in order", async () => {

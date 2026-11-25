@@ -1,4 +1,4 @@
-import type { CookedResponse, Recipe, RecipeInput, Unit } from "@kitchen/shared";
+import type { CookedResponse, Recipe, RecipeImportResponse, RecipeInput, Unit } from "@kitchen/shared";
 import { RecipeApiError, type RecipeApi } from "./api.js";
 
 /** Made-up recipes for the screen tests; the repo is public. */
@@ -44,6 +44,9 @@ export function inMemoryRecipeApi(initial: Recipe[] = [lentilSoup, flatbread]): 
   /** Overrides what the next cooks report back; the default says it used 100 g of flour. */
   cookResult: Partial<CookedResponse>;
   failCookWith?: RecipeApiError;
+  /** The addresses pasted for import, and what the next import answers with. */
+  imports: string[];
+  importResult?: RecipeImportResponse | RecipeApiError;
 } {
   const recipes = new Map(initial.map((r) => [r.id, r]));
   let next = 1;
@@ -51,6 +54,14 @@ export function inMemoryRecipeApi(initial: Recipe[] = [lentilSoup, flatbread]): 
     recipes,
     cooks: [],
     cookResult: {},
+    imports: [],
+    async importFromUrl(url) {
+      api.imports.push(url);
+      const result = api.importResult;
+      if (result instanceof RecipeApiError) throw result;
+      if (!result) throw new RecipeApiError(422, ["No recipe data found on that page."]);
+      return result;
+    },
     async cooked(id, servingsMade) {
       const fail = api.failCookWith;
       if (fail) {

@@ -40,3 +40,4 @@ export {
   type Shortfall,
   type UsedStock,
 } from "./cooking.js";
+export { matchUnit } from "./mealie/map.js";

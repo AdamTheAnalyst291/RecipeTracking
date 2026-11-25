@@ -1,4 +1,4 @@
-import type { CookedRequest, CookedResponse, Recipe, RecipeInput, RecipeListResponse, RecipeSummary, Unit, UnitListResponse } from "@kitchen/shared";
+import type { CookedRequest, CookedResponse, Recipe, RecipeImportRequest, RecipeImportResponse, RecipeInput, RecipeListResponse, RecipeSummary, Unit, UnitListResponse } from "@kitchen/shared";
 
 type Fetch = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -10,6 +10,8 @@ export interface RecipeApi {
   update(id: string, input: RecipeInput): Promise<Recipe>;
   remove(id: string): Promise<void>;
   units(): Promise<Unit[]>;
+  /** Reads the recipe on a web page into a draft; nothing is saved until `create`. */
+  importFromUrl(url: string): Promise<RecipeImportResponse>;
   /** "I made this": uses up pantry stock for the servings made and logs the cook. */
   cooked(id: string, servingsMade?: number): Promise<CookedResponse>;
 }
@@ -65,6 +67,10 @@ export function createRecipeApi(apiUrl: string, getToken: () => Promise<string>,
     },
     async remove(id) {
       await send("DELETE", `/api/recipes/${id}`);
+    },
+    async importFromUrl(url) {
+      const body: RecipeImportRequest = { url };
+      return (await (await send("POST", "/api/recipe-import", body)).json()) as RecipeImportResponse;
     },
     async units() {
       return ((await (await send("GET", "/api/units")).json()) as UnitListResponse).units;
