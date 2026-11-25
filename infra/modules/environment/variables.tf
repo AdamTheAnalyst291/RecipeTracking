@@ -48,3 +48,16 @@ variable "auth_client_id" {
     error_message = "auth_client_id must be empty or an app registration's client ID (a lowercase GUID)."
   }
 }
+
+variable "database_exports" {
+  description = "Turns on the weekly export of the app database (card S2): a storage account for the exports, and write access for the backup identity whose service principal object ID is reader_object_id. Leave reader_object_id empty until that identity exists. null (the default) creates nothing."
+  type = object({
+    reader_object_id = string
+  })
+  default = null
+
+  validation {
+    condition     = var.database_exports == null || var.database_exports.reader_object_id == "" || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.database_exports.reader_object_id))
+    error_message = "database_exports.reader_object_id must be empty or a service principal's object ID (a lowercase GUID)."
+  }
+}

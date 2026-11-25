@@ -1,4 +1,4 @@
-# Opens a pull request when a new app image, bridge package or GitHub Action version is out.
+# Opens a pull request when a new app image, bridge package, .NET tool or GitHub Action version is out.
 version: 2
 updates:
   - package-ecosystem: "docker-compose"
@@ -18,6 +18,11 @@ updates:
       # TypeScript 7 breaks typescript-eslint (PR #26); take majors by hand.
       - dependency-name: "typescript"
         update-types: ["version-update:semver-major"]
+  # SqlPackage for the weekly Prod export (.config/dotnet-tools.json, card S2).
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "monthly"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

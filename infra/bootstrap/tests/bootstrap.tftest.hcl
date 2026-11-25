@@ -137,3 +137,56 @@ run "only_dev_uat_and_prod_are_allowed" {
 
   expect_failures = [var.environments]
 }
+
+# --- Backup identity (card S2) -------------------------------------------------
+
+run "prod_gets_a_backup_identity_that_trusts_only_the_prod_backup_environment" {
+  command = plan
+
+  assert {
+    condition     = toset(keys(azuread_application.backup)) == toset(["prod"])
+    error_message = "Only Prod has a backup identity."
+  }
+
+  assert {
+    condition     = azuread_application.backup["prod"].display_name == "kitchen-github-prod-backup"
+    error_message = "The backup identity must be named kitchen-github-prod-backup."
+  }
+
+  assert {
+    condition     = azuread_application_federated_identity_credential.backup_environment["prod"].subject == "repo:AdamTheAnalyst291@225034465/RecipeTracking@1433625977:environment:prod-backup"
+    error_message = "The backup identity must trust the prod-backup GitHub Environment only, never prod itself."
+  }
+
+  assert {
+    condition     = azuread_application_federated_identity_credential.backup_environment["prod"].issuer == "https://token.actions.githubusercontent.com" && azuread_application_federated_identity_credential.backup_environment["prod"].audiences == tolist(["api://AzureADTokenExchange"])
+    error_message = "The backup identity's credential must be GitHub's OIDC issuer and audience."
+  }
+}
+
+run "deploy_identities_may_grant_storage_blob_data_contributor_for_the_exports" {
+  command = plan
+
+  assert {
+    condition     = strcontains(azurerm_role_assignment.deploy_role_assignments["prod"].condition, "ba92f5b4-2d11-453d-a403-e96b0029c9fe")
+    error_message = "Prod's deploy identity must be able to grant Storage Blob Data Contributor (the backup identity's role on the export container)."
+  }
+
+  assert {
+    condition     = !strcontains(azurerm_role_assignment.deploy_role_assignments["prod"].condition, "8e3af657-a8ff-443c-a75c-2fe8c4bcb635")
+    error_message = "The deploy identity must never be able to grant Owner."
+  }
+}
+
+run "no_backup_identity_without_prod" {
+  command = plan
+
+  variables {
+    environments = ["dev"]
+  }
+
+  assert {
+    condition     = length(azuread_application.backup) == 0
+    error_message = "Without Prod there is nothing to back up."
+  }
+}

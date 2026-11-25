@@ -107,3 +107,35 @@ run "takes_the_kitchen_prod_app_registration" {
     error_message = "Prod must pass KITCHEN_AUTH_CLIENT_ID on to the API and web app."
   }
 }
+
+run "prod_exports_its_database_weekly" {
+  command = plan
+
+  assert {
+    condition     = startswith(output.exports_storage_account_name, "stkitchenbakprod") && output.exports_container_name == "database-exports"
+    error_message = "Prod must have the weekly export's storage (card S2)."
+  }
+
+  assert {
+    condition     = length(module.environment.exports_writer_principal_ids) == 0
+    error_message = "With no AZURE_BACKUP_PRINCIPAL_ID yet, nobody may write the exports."
+  }
+}
+
+run "the_backup_identity_may_write_prod_exports" {
+  command = plan
+
+  variables {
+    backup_identity_object_id = "00000000-0000-0000-0000-000000000006"
+  }
+
+  assert {
+    condition     = module.environment.exports_writer_principal_ids == ["00000000-0000-0000-0000-000000000006"]
+    error_message = "Prod must grant the export container to kitchen-github-prod-backup and nobody else."
+  }
+
+  assert {
+    condition     = module.environment.exports_writer_principal_ids != [var.deploy_identity_object_id]
+    error_message = "The backup job must not run as the Prod deploy identity."
+  }
+}

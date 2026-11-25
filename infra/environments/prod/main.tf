@@ -47,6 +47,12 @@ variable "deploy_identity_object_id" {
   type        = string
 }
 
+variable "backup_identity_object_id" {
+  description = "Object ID of the kitchen-github-prod-backup service principal (GitHub variable AZURE_BACKUP_PRINCIPAL_ID on the prod environment), which runs the weekly database export. Empty until infra/bootstrap creates it."
+  type        = string
+  default     = ""
+}
+
 variable "auth_client_id" {
   description = "Client ID of the kitchen-prod app registration (GitHub variable KITCHEN_AUTH_CLIENT_ID on the prod environment). Empty until it exists."
   type        = string
@@ -70,6 +76,11 @@ module "environment" {
   # Prod's vault holds the Plaid Production secret. Once on, this can't be turned off,
   # and a deleted vault can't be purged before its 7-day retention ends.
   key_vault_purge_protection = true
+
+  # The weekly export of the database (card S2, .github/workflows/backup-prod.yml).
+  database_exports = {
+    reader_object_id = var.backup_identity_object_id
+  }
 }
 
 output "web_url" {
@@ -110,4 +121,12 @@ output "auth_client_id" {
 
 output "tenant_id" {
   value = module.environment.tenant_id
+}
+
+output "exports_storage_account_name" {
+  value = module.environment.exports_storage_account_name
+}
+
+output "exports_container_name" {
+  value = module.environment.exports_container_name
 }

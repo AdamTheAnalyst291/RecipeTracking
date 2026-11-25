@@ -222,3 +222,87 @@ resource "azapi_resource" "app_database" {
     }
   }
 }
+
+# --- Database exports (card S2) ------------------------------------------------
+# Point-in-time restore is the first line of defence (7 days on the free offer), but
+# those backups go when the server does. A weekly export (.github/workflows/backup-prod.yml)
+# keeps a copy here, apart from the database. Restore steps: infra/README.md, "Backups".
+
+locals {
+  exports_enabled = var.database_exports != null
+  exports_reader  = local.exports_enabled ? var.database_exports.reader_object_id : ""
+}
+
+resource "azurerm_storage_account" "exports" {
+  count = local.exports_enabled ? 1 : 0
+
+  name                            = "stkitchenbak${var.environment}${local.suffix}"
+  resource_group_name             = var.resource_group_name
+  location                        = var.location
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
+  min_tls_version                 = "TLS1_2"
+  allow_nested_items_to_be_public = false
+  # Entra ID only: the backup job writes with its role assignment, never an account key.
+  shared_access_key_enabled = false
+  tags                      = merge(local.tags, { purpose = "database-exports" })
+
+  blob_properties {
+    # The backup job keeps the newest 8 exports and deletes older ones. A deleted or
+    # overwritten export survives as a version (cleaned up by the policy below) and as a
+    # soft-deleted blob, and the job's role can't delete versions.
+    versioning_enabled = true
+
+    delete_retention_policy {
+      days = 30
+    }
+
+    container_delete_retention_policy {
+      days = 30
+    }
+  }
+}
+
+resource "azurerm_storage_container" "exports" {
+  count = local.exports_enabled ? 1 : 0
+
+  name                  = "database-exports"
+  storage_account_id    = azurerm_storage_account.exports[0].id
+  container_access_type = "private"
+}
+
+# Versions left behind when the job prunes or overwrites an export are deleted 30 days
+# later, so storage stays at about 8 exports.
+resource "azurerm_storage_management_policy" "exports" {
+  count = local.exports_enabled ? 1 : 0
+
+  storage_account_id = azurerm_storage_account.exports[0].id
+
+  rule {
+    name    = "expire-old-export-versions"
+    enabled = true
+
+    filters {
+      blob_types   = ["blockBlob"]
+      prefix_match = ["${azurerm_storage_container.exports[0].name}/"]
+    }
+
+    actions {
+      version {
+        delete_after_days_since_creation = 30
+      }
+    }
+  }
+}
+
+# The backup identity (kitchen-github-<env>-backup) may add, read and delete exports in
+# this one container. Storage Blob Data Contributor can't delete blob versions or turn off
+# soft delete, so it can't destroy the history either.
+resource "azurerm_role_assignment" "exports_writer" {
+  count = local.exports_reader != "" ? 1 : 0
+
+  scope                = azurerm_storage_container.exports[0].id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = local.exports_reader
+  principal_type       = "ServicePrincipal"
+}
