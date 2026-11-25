@@ -49,6 +49,20 @@ Run it against **Dev first**, read the report, then run it against Prod at switc
 5. **Read the report.** It lists how many products were new, updated or unchanged and how many foods were new or matched, then anything it couldn't carry over exactly: inactive products (skipped), units that aren't in the unit table (counted in "each"), products with no price, a price it couldn't use, and prices Grocy wouldn't return. Fix those by hand in the app, or in Grocy and run again.
 6. Clear the key afterwards: `Remove-Item Env:GROCY_API_KEY`, and delete it in Grocy once switch-over is done.
 
+## Sample transactions in Dev (card $1)
+
+Until Plaid is connected (card $2), the money screens have nothing to show. `pnpm --filter @kitchen/db import:sample-money` loads five made-up transactions on two made-up accounts (`packages/db/test-fixtures/plaid-transactions.json`) into a database, through the same import Plaid will use. Running it again updates them rather than adding copies. It refuses a server or database whose name says Prod.
+
+1. **Sign in to Azure** (no database password): `az login`. The database needs the latest migrations (a deploy applies them) and your household (sign in to the app once).
+2. **Set the environment** (PowerShell):
+
+   ```powershell
+   $env:SQL_SERVER = "<server>.database.windows.net"   # Dev's SQL server
+   $env:SQL_DATABASE = "<database name>"
+   ```
+
+3. **Run it** from the repo root: `pnpm --filter @kitchen/db import:sample-money`, then open Money in the app: add a category and a rule, press "Run rules now", and split a transaction.
+
 ---
 
 # mealie-home (legacy laptop setup)

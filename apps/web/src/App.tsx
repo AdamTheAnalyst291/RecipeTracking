@@ -3,6 +3,8 @@ import { checkApiHealth, loadConfig, type ApiHealth } from "./health.js";
 import { fetchMe, type Me } from "./me.js";
 import { createMealPlanApi } from "./mealPlan/api.js";
 import { MealPlan } from "./mealPlan/MealPlan.js";
+import { createMoneyApi } from "./money/api.js";
+import { Money } from "./money/Money.js";
 import { PantryScreen } from "./PantryScreen.js";
 import { createRecipeApi } from "./recipes/api.js";
 import { Recipes } from "./recipes/Recipes.js";
@@ -97,6 +99,7 @@ function SessionView({ session, onSignedOut }: { session: Session; onSignedOut: 
             <KitchenShopping apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
             <KitchenRecipes apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
             <PantryScreen apiUrl={session.apiUrl} getToken={session.signIn.getToken} onSignedOut={onSignedOut} />
+            <KitchenMoney apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
           </>
         );
       }
@@ -137,4 +140,9 @@ function KitchenRecipes({ apiUrl, getToken }: { apiUrl: string; getToken: () => 
 function KitchenShopping({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
   const api = useMemo(() => createShoppingApi(apiUrl, getToken), [apiUrl, getToken]);
   return <Shopping api={api} />;
+}
+
+function KitchenMoney({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
+  const api = useMemo(() => createMoneyApi(apiUrl, getToken), [apiUrl, getToken]);
+  return <Money api={api} />;
 }
