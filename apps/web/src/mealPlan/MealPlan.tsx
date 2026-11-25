@@ -4,11 +4,11 @@ import type { RecipeApi } from "../recipes/api.js";
 import type { MealPlanApi } from "./api.js";
 import { addDays, dayLabel, localToday, weekDays, weekStart } from "./dates.js";
 
-const SLOT_LABEL: Record<MealSlot, string> = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snack" };
+export const SLOT_LABEL: Record<MealSlot, string> = { breakfast: "Breakfast", lunch: "Lunch", dinner: "Dinner", snack: "Snack" };
 
 type Editing = { kind: "add"; date: string } | { kind: "move"; id: string } | null;
 
-const servingsText = (n: number) => `${n} serving${n === 1 ? "" : "s"}`;
+export const servingsText = (n: number) => `${n} serving${n === 1 ? "" : "s"}`;
 const reasonOf = (error: unknown) => (error instanceof Error && error.message ? error.message : "Something went wrong.");
 
 interface Props {
