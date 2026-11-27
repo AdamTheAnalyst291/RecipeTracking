@@ -73,6 +73,9 @@ module "environment" {
 
   auth_client_id = var.auth_client_id
 
+  # The bank sync's Plaid (card $2): the Production keys are in this environment's vault.
+  plaid_environment = "production"
+
   # Prod's vault holds the Plaid Production secret. Once on, this can't be turned off,
   # and a deleted vault can't be purged before its 7-day retention ends.
   key_vault_purge_protection = true
@@ -104,6 +107,10 @@ output "function_app_principal_id" {
 
 output "key_vault_name" {
   value = module.environment.key_vault_name
+}
+
+output "token_vault_name" {
+  value = module.environment.token_vault_name
 }
 
 output "sql_server_fqdn" {

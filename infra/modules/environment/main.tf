@@ -102,6 +102,15 @@ resource "azurerm_function_app_flex_consumption" "api" {
     KITCHEN_AUTH_TENANT_ID    = data.azurerm_client_config.current.tenant_id
     KITCHEN_AUTH_CLIENT_ID    = var.auth_client_id
     KITCHEN_HOUSEHOLD_MEMBERS = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.this.name};SecretName=${local.household_members_secret})"
+
+    # Bank sync through Plaid (card $2, ADR-27). Sandbox in Dev, Production in Prod; the keys
+    # and the ntfy alert topic are secrets you add by hand to the main vault (infra/README.md).
+    PLAID_ENV                = var.plaid_environment
+    PLAID_CLIENT_ID          = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.this.name};SecretName=plaid-client-id)"
+    PLAID_SECRET             = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.this.name};SecretName=plaid-secret)"
+    KITCHEN_ALERT_NTFY_TOPIC = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.this.name};SecretName=ntfy-topic)"
+    # Where the API writes each bank connection's Plaid access token (see the token vault below).
+    KITCHEN_TOKEN_VAULT_NAME = azurerm_key_vault.tokens.name
   }
 
   site_config {
@@ -161,6 +170,28 @@ resource "azurerm_key_vault" "this" {
 resource "azurerm_role_assignment" "api_key_vault" {
   scope                = azurerm_key_vault.this.id
   role_definition_name = "Key Vault Secrets User"
+  principal_id         = azurerm_function_app_flex_consumption.api.identity[0].principal_id
+  principal_type       = "ServicePrincipal"
+}
+
+# Holds only the Plaid access tokens the API writes when a bank is connected (card $2). It is
+# a vault of its own so the API's write access can't reach the main vault: a bug or a
+# compromise that could write there could change household-members and let anyone in.
+# "-t" keeps the name within Key Vault's 24 characters (kv-kitchen-prod-abc123-t is 24).
+resource "azurerm_key_vault" "tokens" {
+  name                       = "kv-kitchen-${var.environment}-${local.suffix}-t"
+  resource_group_name        = var.resource_group_name
+  location                   = var.location
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  rbac_authorization_enabled = true
+  purge_protection_enabled   = var.key_vault_purge_protection
+  tags                       = local.tags
+}
+
+resource "azurerm_role_assignment" "api_token_vault" {
+  scope                = azurerm_key_vault.tokens.id
+  role_definition_name = "Key Vault Secrets Officer"
   principal_id         = azurerm_function_app_flex_consumption.api.identity[0].principal_id
   principal_type       = "ServicePrincipal"
 }

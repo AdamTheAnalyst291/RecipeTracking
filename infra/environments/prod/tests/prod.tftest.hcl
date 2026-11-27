@@ -139,3 +139,22 @@ run "the_backup_identity_may_write_prod_exports" {
     error_message = "The backup job must not run as the Prod deploy identity."
   }
 }
+
+run "prod_banks_use_plaid_production_and_a_purge_protected_token_vault" {
+  command = plan
+
+  assert {
+    condition     = module.environment.settings.plaid_environment == "production"
+    error_message = "Prod's bank sync must talk to Plaid Production."
+  }
+
+  assert {
+    condition     = module.environment.settings.token_vault_purge_protection == true
+    error_message = "Prod's token vault holds the real bank's access token and must be purge protected, like the main vault."
+  }
+
+  assert {
+    condition     = startswith(output.token_vault_name, "kv-kitchen-prod-") && length(output.token_vault_name) <= 24
+    error_message = "Prod's token vault must be named for prod, within 24 characters."
+  }
+}
