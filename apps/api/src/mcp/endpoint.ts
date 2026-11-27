@@ -33,6 +33,7 @@ export const MCP_LIMITS = {
   shoppingItems: 200,
   ingredients: 60,
   steps: 40,
+  tags: 20,
   /** Characters in a name, tag, note or other short text. */
   text: 300,
   /** Characters in one recipe step. */
@@ -129,7 +130,7 @@ function kitchenServer(user: SignedInUser, reads: KitchenReads, log: InvocationC
               totalMinutes: recipe.totalMinutes,
               sourceUrl: cleanOrNull(recipe.sourceUrl),
               sourceCredit: cleanOrNull(recipe.sourceCredit),
-              tags: recipe.tags.slice(0, MCP_LIMITS.ingredients).map((t) => clean(t)),
+              tags: recipe.tags.slice(0, MCP_LIMITS.tags).map((t) => clean(t)),
               ingredients: ingredients.items.map((i) => ({ food: clean(i.food), quantity: i.quantity, unit: cleanOrNull(i.unit), note: cleanOrNull(i.note) })),
               steps: steps.items.map((s) => clean(s, MCP_LIMITS.stepText)),
             },
@@ -139,7 +140,7 @@ function kitchenServer(user: SignedInUser, reads: KitchenReads, log: InvocationC
         const found = (await store.list(user)).filter((r) => matches(search, r.name, ...r.tags));
         const page = capped(found, MCP_LIMITS.recipes);
         return json({
-          recipes: page.items.map((r) => ({ id: r.id, name: clean(r.name), servings: r.servings, totalMinutes: r.totalMinutes, tags: r.tags.map((t) => clean(t)) })),
+          recipes: page.items.map((r) => ({ id: r.id, name: clean(r.name), servings: r.servings, totalMinutes: r.totalMinutes, tags: r.tags.slice(0, MCP_LIMITS.tags).map((t) => clean(t)) })),
           truncated: page.truncated,
           total: found.length,
         });
@@ -240,12 +241,15 @@ function kitchenServer(user: SignedInUser, reads: KitchenReads, log: InvocationC
   return server;
 }
 
-/** The endpoint's public address and where its metadata lives, from the address it was called at. */
-function addresses(request: HttpRequest) {
+/**
+ * The endpoint's public address and where its metadata lives. In Azure the host name is the
+ * app's own (`WEBSITE_HOSTNAME`), never the request's Host header; only a local run falls back
+ * to the address it was called at.
+ */
+function addresses(request: HttpRequest, hostName: string | undefined) {
   const url = new URL(request.url);
-  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
   // Claude only connects over HTTPS on 443; the Functions front end ends TLS before the worker.
-  const origin = `${local ? url.protocol : "https:"}//${url.host}`;
+  const origin = hostName ? `https://${hostName}` : `${url.protocol}//${url.host}`;
   const resource = `${origin}/api/mcp`;
   return {
     resource,
@@ -265,7 +269,32 @@ const tenantFromEnv = () => {
 interface Options {
   /** The Entra tenant that signs tokens; read from the app settings by default. */
   tenantId?: () => string | undefined;
+  /** The app's public host name; Azure sets `WEBSITE_HOSTNAME`. Unset when run locally. */
+  hostName?: () => string | undefined;
   now?: () => Date;
+  /** Calls one member may make in a minute, per running instance. */
+  callsPerMinute?: number;
+}
+
+/** Above this many calls a minute the endpoint answers 429. Claude makes a few per question. */
+const CALLS_PER_MINUTE = 120;
+
+/**
+ * A fixed one-minute window per member. It is per instance (Flex Consumption may run several),
+ * so it caps a runaway client rather than metering exactly; Entra sign-in is the real gate.
+ */
+function rateLimiter(perMinute: number, now: () => Date): (objectId: string) => boolean {
+  const windows = new Map<string, { minute: number; calls: number }>();
+  return (objectId) => {
+    const minute = Math.floor(now().getTime() / 60_000);
+    const window = windows.get(objectId);
+    if (!window || window.minute !== minute) {
+      windows.set(objectId, { minute, calls: 1 });
+      return true;
+    }
+    window.calls += 1;
+    return window.calls <= perMinute;
+  };
 }
 
 /** Turns the Functions request into the web-standard one the SDK serves. */
@@ -273,14 +302,17 @@ async function toWebRequest(request: HttpRequest): Promise<Request> {
   const hasBody = request.method !== "GET" && request.method !== "HEAD";
   return new Request(request.url, {
     method: request.method,
-    headers: Object.fromEntries(request.headers.entries()),
+    // The token was checked already (auth.ts); the SDK has no use for it.
+    headers: Object.fromEntries([...request.headers.entries()].filter(([name]) => name.toLowerCase() !== "authorization")),
     ...(hasBody ? { body: await request.arrayBuffer() } : {}),
   });
 }
 
 async function toFunctionsResponse(response: Response): Promise<HttpResponseInit> {
   const body = await response.text();
-  return { status: response.status, headers: Object.fromEntries(response.headers.entries()), ...(body === "" ? {} : { body }) };
+  // The body is handed on as text, so the host works out its own length and encoding.
+  const headers = [...response.headers.entries()].filter(([name]) => !["content-length", "content-encoding", "transfer-encoding"].includes(name));
+  return { status: response.status, headers: Object.fromEntries(headers), ...(body === "" ? {} : { body }) };
 }
 
 /**
@@ -294,6 +326,8 @@ export function createMcpHandlers(reads: KitchenReads, options: Options = {}): {
 } {
   const tenantId = options.tenantId ?? tenantFromEnv;
   const now = options.now ?? (() => new Date());
+  const hostName = options.hostName ?? (() => process.env.WEBSITE_HOSTNAME?.trim() || undefined);
+  const allow = rateLimiter(options.callsPerMinute ?? CALLS_PER_MINUTE, now);
 
   // Stateless: a fresh server per request, for both the 2026-07-28 protocol and the 2025
   // handshake (which Claude's connectors use today). JSON responses only, and no
@@ -309,8 +343,10 @@ export function createMcpHandlers(reads: KitchenReads, options: Options = {}): {
 
   return {
     challenge: (request) => {
-      const { metadata, scopes } = addresses(request);
-      return `Bearer resource_metadata="${metadata}", scope="${scopes.join(" ")}"`;
+      const { metadata, scopes } = addresses(request, hostName());
+      // RFC 6750: name the error only when a token was sent; with none, just say how to get one.
+      const error = request.headers.get("authorization") === null ? "" : 'error="invalid_token", ';
+      return `Bearer ${error}resource_metadata="${metadata}", scope="${scopes.join(" ")}"`;
     },
 
     mcp: async (request, context, user) => {
@@ -319,9 +355,13 @@ export function createMcpHandlers(reads: KitchenReads, options: Options = {}): {
       if (request.headers.get("origin") !== null) {
         return { status: 403, jsonBody: { jsonrpc: "2.0", error: { code: -32600, message: "Requests from web pages aren't accepted." } } };
       }
-      const token = /^Bearer (\S+)$/i.exec(request.headers.get("authorization") ?? "")?.[1] ?? "";
+      if (!allow(user.objectId)) {
+        return { status: 429, headers: { "Retry-After": "60" }, jsonBody: { jsonrpc: "2.0", error: { code: -32000, message: "Too many calls; try again in a minute." } } };
+      }
+      // The SDK passes authInfo through to the server factory untouched: it carries who signed
+      // in (already checked) and the log, not a token for anything to re-check.
       const response = await handler.fetch(await toWebRequest(request), {
-        authInfo: { token, clientId: "", scopes: [API_SCOPE], extra: { user, log: context } },
+        authInfo: { token: "", clientId: "", scopes: [API_SCOPE], extra: { user, log: context } },
       });
       return toFunctionsResponse(response);
     },
@@ -332,7 +372,7 @@ export function createMcpHandlers(reads: KitchenReads, options: Options = {}): {
         console.error("MCP metadata: KITCHEN_AUTH_TENANT_ID is not set to a tenant ID");
         return { status: 500, jsonBody: { error: "Sign-in isn't set up on the server." } };
       }
-      const { resource, scopes } = addresses(request);
+      const { resource, scopes } = addresses(request, hostName());
       return {
         status: 200,
         // A public document; browser-based clients such as MCP Inspector read it across origins.

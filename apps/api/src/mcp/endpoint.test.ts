@@ -133,6 +133,40 @@ describe("MCP endpoint sign-in", () => {
     expect(response.status).toBe(401);
   });
 
+  it("says the token is invalid when one was sent and refused", async () => {
+    const { mcp } = endpoint(fakeReads().reads);
+
+    const response = await mcp(post("Bearer not-a-jwt"), new InvocationContext());
+
+    expect((response.headers as Record<string, string>)["WWW-Authenticate"]).toMatch(/^Bearer error="invalid_token", resource_metadata="/);
+  });
+
+  it("advertises the app's own host name from Azure, not whatever Host the request carried", async () => {
+    const handlers = createMcpHandlers(fakeReads().reads, { tenantId: () => TENANT_ID, hostName: () => "func-kitchen-dev.azurewebsites.net" });
+    const spoofed = new HttpRequest({ method: "GET", url: "https://evil.example/api/.well-known/oauth-protected-resource/mcp" });
+
+    const response = await handlers.metadata(spoofed);
+
+    expect(response.jsonBody).toMatchObject({ resource: `${BASE}/mcp` });
+    expect(handlers.challenge(spoofed)).toContain(`resource_metadata="${BASE}/.well-known/oauth-protected-resource/mcp"`);
+  });
+
+  it("slows a member down with 429 after too many calls in a minute", async () => {
+    let clock = new Date("2026-11-27T15:00:00Z");
+    const handlers = createMcpHandlers(fakeReads().reads, { tenantId: () => TENANT_ID, now: () => clock, callsPerMinute: 2 });
+    const mcp = withAuth(handlers.mcp, () => testAuthenticator, handlers.challenge);
+    const authorization = `Bearer ${await token()}`;
+
+    expect((await mcp(post(authorization), new InvocationContext())).status).toBe(200);
+    expect((await mcp(post(authorization), new InvocationContext())).status).toBe(200);
+    const limited = await mcp(post(authorization), new InvocationContext());
+    expect(limited.status).toBe(429);
+    expect((limited.headers as Record<string, string>)["Retry-After"]).toBe("60");
+
+    clock = new Date("2026-11-27T15:01:00Z");
+    expect((await mcp(post(authorization), new InvocationContext())).status).toBe(200);
+  });
+
   it("refuses an account outside the household with 403, and reads nothing", async () => {
     const { reads, recipes } = fakeReads();
     const { mcp } = endpoint(reads);
@@ -348,6 +382,14 @@ describe("MCP result sizes are capped", () => {
 
     expect(json.recipes).toHaveLength(MCP_LIMITS.recipes);
     expect(json).toMatchObject({ truncated: true, total: MCP_LIMITS.recipes + 5 });
+  });
+
+  it("caps the tags on each recipe", async () => {
+    const tagged = { ...soupSummary, tags: Array.from({ length: MCP_LIMITS.tags + 4 }, (_, i) => `tag ${i}`) };
+    const client = await signedIn(fakeReads({ recipes: { list: vi.fn(async () => [tagged]), get: vi.fn(async () => ({ ...soup, tags: tagged.tags })) } }).reads);
+
+    expect((await call(client, "get_recipes")).json.recipes[0].tags).toHaveLength(MCP_LIMITS.tags);
+    expect((await call(client, "get_recipes", { id: RECIPE })).json.recipe.tags).toHaveLength(MCP_LIMITS.tags);
   });
 
   it("caps pantry products, planned meals and shopping items", async () => {

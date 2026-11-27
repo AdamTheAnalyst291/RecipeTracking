@@ -10,6 +10,9 @@ The API's MCP server (card P1, ADR-26) lives at `https://<api-host>/api/mcp`. It
 - **Claude sends RFC 8707 `resource=https://<api-host>/api/mcp`.** Entra accepts it only if that URL is one of kitchen-<env>'s Application ID URIs, so step 1 below adds it.
 - **The access token** is an ordinary v2 token for kitchen-<env>: `aud` is its client ID and `scp` contains `access_as_user`. The API checks it exactly as it checks the web app's (`apps/api/src/auth.ts`): tenant, audience, RS256 signature, scope, and household membership. Only Adam gets in.
 - **Requests with an `Origin` header** (a web page) are refused with 403. Claude calls from Anthropic's servers and sends none.
+- **Rate limit:** 120 calls a minute per member and per running instance; more get 429 with `Retry-After: 60`.
+- **The advertised address** comes from Azure's `WEBSITE_HOSTNAME` (the app's own host name), never from the request's Host header.
+- **Tokens aren't tied to the MCP endpoint.** A token for kitchen-<env> works on the REST routes and on `/api/mcp` alike, whichever client got it, since both hold callers to the same rules. Only Adam's account gets in either way.
 
 ## Set up (one time per environment)
 
@@ -23,14 +26,14 @@ kitchen=$(az ad app list --display-name kitchen-$env --query "[0].appId" -o tsv)
 echo "MCP endpoint: $mcp  kitchen app: $kitchen"
 ```
 
-1. **Let Entra accept the MCP address as kitchen-<env>'s resource.** Keep `api://<client id>`, which the web app uses, and add the MCP URL. Nothing else on kitchen-<env> changes.
+1. **Let Entra accept the MCP address as kitchen-<env>'s resource.** This changes kitchen-<env>, the web app's registration. It keeps `api://<client id>`, which the web app asks for, and adds the MCP URL; tokens' `aud` stays the client ID, so the web app's sign-in is unaffected. Nothing else on kitchen-<env> changes.
 
    ```bash
    az ad app update --id "$kitchen" --identifier-uris "api://$kitchen" "$mcp"
    az ad app show --id "$kitchen" --query identifierUris
    ```
 
-   `*.azurewebsites.net` isn't a verified domain. Entra allows it here only because the app already issues v2 tokens (`requestedAccessTokenVersion: 2`, set when kitchen-<env> was made).
+   `*.azurewebsites.net` isn't a verified domain. Per Claude's connector troubleshooting guide, citing Microsoft's identifier-URI rules, Entra accepts it for a single-tenant app that issues v2 tokens (`requestedAccessTokenVersion: 2`, set when kitchen-<env> was made). If the update is refused with a verified-domain error, stop and tell the parent session: that changes the design.
 
 2. **Create Claude's client, `kitchen-claude-<env>`:** this tenant only, Claude's callback as a web redirect, and permission to call kitchen-<env> as you. On Dev it also gets MCP Inspector's callback as a single-page-app redirect, for testing. Copy the block as it is (the heredoc's closing `EOF` must start its line):
 
@@ -64,7 +67,7 @@ az ad sp create --id "$claude"
    az ad app permission grant --id "$claude" --api "$graph" --scope offline_access
    ```
 
-4. **Make the client secret.** It expires in 6 months. It goes only into Claude's connector settings: not Key Vault, not git, not chat.
+4. **Make the client secret.** It expires in 6 months. The command prints it once: copy it straight into Claude's connector settings (step 5), then clear the terminal. It goes nowhere else: not Key Vault, not git, not chat.
 
    ```bash
    az ad app credential reset --id "$claude" --display-name claude-connector \
@@ -80,12 +83,12 @@ az ad sp create --id "$claude"
 npx @modelcontextprotocol/inspector@2.15.0
 ```
 
-In Inspector, set the transport to **Streamable HTTP** and the URL to `$mcp`.
+In Inspector, set the transport to **Streamable HTTP**, the connection type to **Via Proxy**, and the URL to `$mcp`. The endpoint refuses browser-direct calls, because they carry an `Origin` header, and it has no CORS preflight.
 
 - **Without signing in:** **Connect** must fail with 401.
-- **Signing in:** under **Authentication**, set the client ID to `$claude` (leave the secret empty: Inspector redeems the code from the browser through the SPA redirect) and the scope to `https://<api-host>/api/mcp/access_as_user offline_access`. Sign in, then **List Tools**: the four tools appear, and each answers with your Dev data.
+- **Signing in:** under **Authentication**, set the client ID to `$claude` and leave the secret empty: Inspector redeems the code from the browser through the SPA redirect. Set the scope to the value of `echo "$mcp/access_as_user offline_access"`. Sign in, then **List Tools**: the four tools appear, and each answers with your Dev data.
 
-If Inspector's browser can't read the metadata document, the Functions app's platform CORS (which only allows the web app) may be dropping its `Access-Control-Allow-Origin: *`. Use Inspector's **Via Proxy** connection, or check from Claude instead.
+Not yet tried against Dev: whether Inspector's browser-side OAuth can read the metadata document. The Functions app's platform CORS, which allows only the web app, may drop the document's `Access-Control-Allow-Origin: *`. If it does, check from Claude itself (step 5) instead.
 
 ## Renewing the secret
 

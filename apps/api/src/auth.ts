@@ -160,7 +160,7 @@ export function withAuth(
     const result = await getAuthenticator()(request);
     if (!result.ok) {
       if (challenge === undefined || result.response.status !== 401) return result.response;
-      return { ...result.response, headers: { "WWW-Authenticate": challenge(request) } };
+      return { ...result.response, headers: { ...(result.response.headers as Record<string, string>), "WWW-Authenticate": challenge(request) } };
     }
     return handler(request, context, result.user);
   };
