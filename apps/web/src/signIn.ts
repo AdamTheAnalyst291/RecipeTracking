@@ -1,4 +1,6 @@
 import {
+  BrowserAuthError,
+  BrowserAuthErrorCodes,
   createStandardPublicClientApplication,
   InteractionRequiredAuthError,
   type AccountInfo,
@@ -17,6 +19,17 @@ export interface SignIn {
 /** The delegated scope the kitchen's app registration exposes (infra/README.md, "Sign-in"). */
 export function apiScope(clientId: string): string {
   return `api://${clientId}/access_as_user`;
+}
+
+/**
+ * Whether a failed silent renewal needs a trip to Microsoft: MSAL says the user must sign in
+ * again, or the hidden iframe's answer never came back through the redirect bridge. Anything
+ * else (offline, a network error) is left to the caller, so a phone without signal isn't sent
+ * off to a sign-in page it can't load.
+ */
+function needsMicrosoftAgain(error: unknown): boolean {
+  if (error instanceof InteractionRequiredAuthError) return true;
+  return error instanceof BrowserAuthError && error.errorCode === BrowserAuthErrorCodes.timedOut;
 }
 
 /**
@@ -40,6 +53,10 @@ export async function startSignIn(auth: AuthSettings): Promise<SignIn> {
   const account = result?.account ?? msal.getAllAccounts()[0] ?? null;
   if (account) msal.setActiveAccount(account);
   const scopes = [apiScope(auth.clientId)];
+  // When the refresh token has expired, MSAL renews in a hidden iframe, and MSAL v5 only hears
+  // the answer through a page that runs its redirect bridge (redirect.html). Full-page sign-in
+  // keeps "/" as its redirect URI.
+  const bridgeUri = `${window.location.origin}/redirect.html`;
 
   return {
     account,
@@ -48,9 +65,9 @@ export async function startSignIn(auth: AuthSettings): Promise<SignIn> {
     getToken: async () => {
       if (!account) throw new Error("Not signed in");
       try {
-        return (await msal.acquireTokenSilent({ scopes, account })).accessToken;
+        return (await msal.acquireTokenSilent({ scopes, account, redirectUri: bridgeUri })).accessToken;
       } catch (error) {
-        if (error instanceof InteractionRequiredAuthError) await msal.acquireTokenRedirect({ scopes, account });
+        if (needsMicrosoftAgain(error)) await msal.acquireTokenRedirect({ scopes, account });
         throw error;
       }
     },

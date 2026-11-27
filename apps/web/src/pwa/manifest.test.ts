@@ -76,4 +76,18 @@ describe("installing on a phone's home screen", () => {
     expect(headers("/sw.js")).toEqual({ "cache-control": "no-cache", "content-type": "text/javascript; charset=utf-8" });
     expect(headers("/config.json")).toEqual({ "cache-control": "no-store" });
   });
+
+  it("serves MSAL's redirect bridge as itself, never stored, with nothing cutting it off from the app", () => {
+    const hosting = JSON.parse(hostingText) as {
+      navigationFallback?: unknown;
+      globalHeaders?: Record<string, string>;
+      routes: { route: string; headers: Record<string, string> }[];
+    };
+
+    // A fallback would answer /redirect.html with the app's page; a COOP header would cut the
+    // bridge's BroadcastChannel off from the app (MSAL's redirect-bridge guide).
+    expect(hosting.navigationFallback).toBeUndefined();
+    expect(Object.keys(hosting.globalHeaders ?? {}).map((name) => name.toLowerCase())).not.toContain("cross-origin-opener-policy");
+    expect(hosting.routes.find((r) => r.route === "/redirect.html")?.headers).toEqual({ "cache-control": "no-store" });
+  });
 });
