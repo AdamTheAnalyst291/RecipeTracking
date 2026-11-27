@@ -1,3 +1,7 @@
 {
-  "routes": [{ "route": "/config.json", "headers": { "cache-control": "no-store" } }]
+  "mimeTypes": { ".webmanifest": "application/manifest+json" },
+  "routes": [
+    { "route": "/config.json", "headers": { "cache-control": "no-store" } },
+    { "route": "/sw.js", "headers": { "cache-control": "no-cache", "content-type": "text/javascript; charset=utf-8" } }
+  ]
 }
