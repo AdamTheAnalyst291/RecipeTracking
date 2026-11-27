@@ -91,6 +91,15 @@ output "function_app_principal_id" {
   value = module.environment.function_app_principal_id
 }
 
+output "function_app_client_id" {
+  description = "The API identity's client ID; the migration step makes it a database user."
+  value       = module.environment.function_app_client_id
+}
+
+output "application_insights_name" {
+  value = module.environment.application_insights_name
+}
+
 output "key_vault_name" {
   value = module.environment.key_vault_name
 }

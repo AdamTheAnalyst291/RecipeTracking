@@ -18,7 +18,13 @@ mock_provider "azurerm" {
   }
 }
 
-mock_provider "azapi" {}
+mock_provider "azapi" {
+  mock_data "azapi_resource" {
+    defaults = {
+      output = { properties = { clientId = "00000000-0000-0000-0000-000000000007" } }
+    }
+  }
+}
 
 variables {
   environment         = "dev"
@@ -163,6 +169,93 @@ run "plaid_environment_must_be_sandbox_or_production" {
   }
 
   expect_failures = [var.plaid_environment]
+}
+
+# The Banks 503 (card $2): without these two settings getPool() refuses before it opens a
+# connection, so every database screen answers 503.
+run "api_is_told_which_database_to_use" {
+  command = plan
+
+  override_resource {
+    target          = azurerm_mssql_server.this
+    override_during = plan
+    values = {
+      id                          = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-kitchen-dev/providers/Microsoft.Sql/servers/sql-kitchen-dev-abc123"
+      fully_qualified_domain_name = "sql-kitchen-dev-abc123.database.windows.net"
+    }
+  }
+
+  assert {
+    condition     = azurerm_function_app_flex_consumption.api.app_settings["SQL_SERVER"] == "sql-kitchen-dev-abc123.database.windows.net"
+    error_message = "The API must be told the SQL server's full name (SQL_SERVER)."
+  }
+
+  assert {
+    condition     = azurerm_function_app_flex_consumption.api.app_settings["SQL_DATABASE"] == "sqldb-kitchen-app"
+    error_message = "The API must be told the app database's name (SQL_DATABASE)."
+  }
+}
+
+# The migration step creates the API's database user from this client ID (function_app_client_id).
+# A data source that reads a resource being created is only read during apply, so the plan
+# can check where the value comes from, not the value.
+run "the_api_identity_client_id_comes_from_its_own_identity" {
+  command = plan
+
+  assert {
+    condition     = data.azapi_resource.api_identity.type == "Microsoft.ManagedIdentity/identities@2023-01-31" && data.azapi_resource.api_identity.name == "default"
+    error_message = "The client ID comes from the API's system-assigned identity (identities/default)."
+  }
+
+  assert {
+    condition     = contains(data.azapi_resource.api_identity.response_export_values, "properties.clientId")
+    error_message = "The client ID must be read from the identity."
+  }
+}
+
+run "api_logs_go_to_application_insights_with_a_small_daily_cap" {
+  command = plan
+
+  override_resource {
+    target          = azurerm_application_insights.api
+    override_during = plan
+    values          = { connection_string = "InstrumentationKey=00000000-0000-0000-0000-000000000008" }
+  }
+  override_resource {
+    target          = azurerm_log_analytics_workspace.this
+    override_during = plan
+    values          = { id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-kitchen-dev/providers/Microsoft.OperationalInsights/workspaces/log" }
+  }
+
+  assert {
+    condition     = azurerm_application_insights.api.workspace_id == azurerm_log_analytics_workspace.this.id
+    error_message = "Application Insights must be workspace-based, on this environment's workspace."
+  }
+
+  assert {
+    condition     = azurerm_log_analytics_workspace.this.sku == "PerGB2018" && azurerm_log_analytics_workspace.this.retention_in_days == 30
+    error_message = "The workspace must be pay-as-you-go with the 30 days of retention that are free."
+  }
+
+  assert {
+    condition     = azurerm_log_analytics_workspace.this.daily_quota_gb > 0 && azurerm_log_analytics_workspace.this.daily_quota_gb <= 0.08
+    error_message = "The workspace needs a daily cap that keeps Dev and Prod together under the 5 GB a month that's free."
+  }
+
+  assert {
+    condition     = azurerm_application_insights.api.application_type == "Node.JS" && azurerm_application_insights.api.daily_data_cap_in_gb <= 0.08
+    error_message = "Application Insights must be the Node.js kind, with the same small daily cap."
+  }
+
+  assert {
+    condition     = azurerm_application_insights.api.retention_in_days == 30
+    error_message = "Application Insights keeps the free 30 days only."
+  }
+
+  assert {
+    condition     = azurerm_function_app_flex_consumption.api.site_config[0].application_insights_connection_string == "InstrumentationKey=00000000-0000-0000-0000-000000000008"
+    error_message = "The API must send its logs to this environment's Application Insights."
+  }
 }
 
 run "app_database_uses_the_free_offer_and_pauses_instead_of_billing" {

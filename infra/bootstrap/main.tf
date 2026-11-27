@@ -38,8 +38,10 @@ provider "azurerm" {
   resource_provider_registrations = "none"
   resource_providers_to_register = [
     "Microsoft.Consumption",
+    "Microsoft.Insights", # Application Insights, for the API's logs
     "Microsoft.KeyVault",
     "Microsoft.ManagedIdentity",
+    "Microsoft.OperationalInsights", # its Log Analytics workspace
     "Microsoft.Sql",
     "Microsoft.Storage",
     "Microsoft.Web",
