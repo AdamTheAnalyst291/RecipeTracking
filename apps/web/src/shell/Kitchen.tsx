@@ -20,7 +20,7 @@ interface Props {
   pantry: { apiUrl: string; getToken: () => Promise<string>; onSignedOut: () => void };
   money: MoneyApi;
   /** Monthly budgets (card $3), shown as a tab of the money screen. */
-  budgets?: BudgetApi;
+  budgets: BudgetApi;
   /** Who is signed in, with the way to sign out. Shown on Today. */
   account: ReactNode;
   /** Today as `YYYY-MM-DD`; the device's clock unless a test says otherwise. */

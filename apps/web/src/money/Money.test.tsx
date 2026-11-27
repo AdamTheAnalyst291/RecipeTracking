@@ -11,7 +11,7 @@ vi.setConfig({ testTimeout: 20_000 });
 
 function open(api = inMemoryMoneyApi()) {
   const user = userEvent.setup();
-  render(<Money api={api} />);
+  render(<Money api={api} budgets={inMemoryBudgetApi()} today="2026-11-27" />);
   return { api, user };
 }
 const row = (payee: string) => screen.getByRole("listitem", { name: new RegExp(payee) });

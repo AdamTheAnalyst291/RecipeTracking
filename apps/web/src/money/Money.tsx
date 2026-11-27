@@ -1,6 +1,5 @@
 import type { MoneyCategory, MoneyRule, MoneyRuleField, MoneyRuleMatch, MoneySplitsChange, MoneyTransaction, NewMoneyRule } from "@kitchen/shared";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { localToday } from "../mealPlan/dates.js";
 import type { MoneyApi } from "./api.js";
 import type { BudgetApi } from "./budget-api.js";
 import { Budgets } from "./Budgets.js";
@@ -11,10 +10,10 @@ const reasonOf = (error: unknown) => (error instanceof Error && error.message ? 
 
 interface Props {
   api: MoneyApi;
-  /** Monthly budgets (card $3); the Budgets tab shows when given. */
-  budgets?: BudgetApi;
-  /** Today as `YYYY-MM-DD`, for the budgets' current month; the device's clock unless given. */
-  today?: string;
+  /** Monthly budgets (card $3), on the Budgets tab. */
+  budgets: BudgetApi;
+  /** Today as `YYYY-MM-DD`, for the budgets' current month. */
+  today: string;
 }
 
 /**
@@ -96,11 +95,9 @@ export function Money({ api, budgets, today }: Props) {
         <button type="button" role="tab" aria-selected={tab === "rules"} onClick={() => setTab("rules")}>
           Rules
         </button>
-        {budgets && (
-          <button type="button" role="tab" aria-selected={tab === "budgets"} onClick={() => setTab("budgets")}>
-            Budgets
-          </button>
-        )}
+        <button type="button" role="tab" aria-selected={tab === "budgets"} onClick={() => setTab("budgets")}>
+          Budgets
+        </button>
       </div>
       {problem && (
         <p role="alert" className="money-problem">
@@ -108,8 +105,8 @@ export function Money({ api, budgets, today }: Props) {
         </p>
       )}
       {notice && <p role="status">{notice}</p>}
-      {tab === "budgets" && budgets ? (
-        <Budgets api={budgets} categories={cats} today={today ?? localToday()} />
+      {tab === "budgets" ? (
+        <Budgets api={budgets} categories={cats} today={today} />
       ) : tab === "transactions" ? (
         <Transactions
           txs={txs}

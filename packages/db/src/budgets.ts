@@ -85,14 +85,14 @@ const monthQuery = `
   spent AS (SELECT category_id, -SUM(amount_cents) AS cents FROM parts GROUP BY category_id),
   latest AS (
     SELECT b.category_id, b.amount_cents, b.starts_on,
-           ROW_NUMBER() OVER (PARTITION BY b.category_id ORDER BY b.starts_on DESC) AS n
+           ROW_NUMBER() OVER (PARTITION BY b.category_id ORDER BY b.starts_on DESC) AS newest
     FROM money_budget b WHERE b.household_id = @h AND b.starts_on <= @m
   )
   SELECT c.id AS categoryId, c.name AS category, COALESCE(s.cents, 0) AS spentCents,
          b.amount_cents AS budgetCents, CASE WHEN b.amount_cents IS NULL THEN NULL ELSE CONVERT(CHAR(7), b.starts_on, 23) END AS budgetFrom
   FROM money_category c
   LEFT JOIN spent s ON s.category_id = c.id
-  LEFT JOIN latest b ON b.category_id = c.id AND b.n = 1
+  LEFT JOIN latest b ON b.category_id = c.id AND b.newest = 1
   WHERE c.household_id = @h AND (c.name = N'Groceries' OR b.amount_cents IS NOT NULL OR s.cents > 0)
   ORDER BY CASE WHEN c.name = N'Groceries' THEN 0 ELSE 1 END, c.name, c.id`;
 

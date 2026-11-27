@@ -12,8 +12,11 @@ export function addMonths(month: string, by: number): string {
   return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, "0")}`;
 }
 
-const monthName = (month: string, style: "long" | "month") =>
-  new Date(`${month}-01T12:00:00Z`).toLocaleDateString("en-US", style === "long" ? { month: "long", year: "numeric", timeZone: "UTC" } : { month: "long", timeZone: "UTC" });
+const asDate = (month: string) => new Date(`${month}-01T12:00:00Z`);
+/** "November 2026". */
+const monthTitle = (month: string) => asDate(month).toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+/** "November". */
+const monthOfYear = (month: string) => asDate(month).toLocaleDateString("en-US", { month: "long", timeZone: "UTC" });
 
 interface Props {
   api: BudgetApi;
@@ -38,6 +41,7 @@ export function Budgets({ api, categories, today }: Props) {
   useEffect(() => {
     let cancelled = false;
     setReport(undefined);
+    setProblem(null);
     api.month(month).then(
       (r) => {
         if (cancelled) return;
@@ -74,7 +78,7 @@ export function Budgets({ api, categories, today }: Props) {
         <button type="button" aria-label="Previous month" onClick={() => setMonth(addMonths(month, -1))}>
           ‹
         </button>
-        <h3>{monthName(month, "long")}</h3>
+        <h3>{monthTitle(month)}</h3>
         <button type="button" aria-label="Next month" disabled={month >= current} onClick={() => setMonth(addMonths(month, 1))}>
           ›
         </button>
@@ -88,15 +92,15 @@ export function Budgets({ api, categories, today }: Props) {
       {report?.lines.length === 0 && <p>No budgets or spending this month.</p>}
       <ul className="money-list" aria-label="Budgets">
         {report?.lines.map((l) => (
-          <BudgetLine key={l.categoryId} line={l} monthLabel={monthName(month, "month")} busy={busy} save={(amount) => save(l.categoryId, amount)} />
+          <BudgetRow key={l.categoryId} line={l} monthLabel={monthOfYear(month)} busy={busy} save={(amount) => save(l.categoryId, amount)} />
         ))}
       </ul>
-      {report && unlisted.length > 0 && <AddBudget categories={unlisted} busy={busy} monthLabel={monthName(month, "month")} save={save} />}
+      {report && unlisted.length > 0 && <AddBudget categories={unlisted} busy={busy} monthLabel={monthOfYear(month)} save={save} />}
     </div>
   );
 }
 
-function BudgetLine({ line, monthLabel, busy, save }: { line: MoneyBudgetLine; monthLabel: string; busy: boolean; save: (amountCents: number | null) => Promise<boolean> }) {
+function BudgetRow({ line, monthLabel, busy, save }: { line: MoneyBudgetLine; monthLabel: string; busy: boolean; save: (amountCents: number | null) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
   const [typed, setTyped] = useState("");
   const amount = dollarsToCents(typed);
@@ -125,16 +129,13 @@ function BudgetLine({ line, monthLabel, busy, save }: { line: MoneyBudgetLine; m
           <meter min={0} max={Math.max(line.budgetCents, 1)} value={Math.max(0, line.spentCents)} aria-label={`${line.category} spent of budget`} />
           <p className={left < 0 ? "money-meta money-over" : "money-meta"}>
             <span>{left < 0 ? `${centsText(-left, { sign: false })} over` : `${centsText(left, { sign: false })} left`}</span>
-            {line.budgetFrom && ` · budget since ${monthName(line.budgetFrom, "long")}`}
+            {line.budgetFrom && ` · budget since ${monthTitle(line.budgetFrom)}`}
           </p>
         </>
       )}
       {editing ? (
         <form className="money-tx-actions" onSubmit={(e) => void submit(e)}>
-          <label>
-            Monthly budget
-            <input inputMode="decimal" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="$600" />
-          </label>
+          <AmountInput typed={typed} setTyped={setTyped} />
           <button type="submit" disabled={busy || amount === undefined}>
             Save from {monthLabel} on
           </button>
@@ -194,14 +195,21 @@ function AddBudget({ categories, monthLabel, busy, save }: { categories: MoneyCa
             ))}
           </select>
         </label>
-        <label>
-          Monthly budget
-          <input inputMode="decimal" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="$600" />
-        </label>
+        <AmountInput typed={typed} setTyped={setTyped} />
         <button type="submit" disabled={busy || !categoryId || amount === undefined}>
           Add
         </button>
       </fieldset>
     </form>
+  );
+}
+
+/** The typed monthly budget, in dollars. */
+function AmountInput({ typed, setTyped }: { typed: string; setTyped: (value: string) => void }) {
+  return (
+    <label>
+      Monthly budget
+      <input inputMode="decimal" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="$600" />
+    </label>
   );
 }
