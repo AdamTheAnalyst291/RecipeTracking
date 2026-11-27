@@ -1,4 +1,4 @@
-import type { MoneyCategory, MoneyRule, MoneyRuleField, MoneyRuleMatch, MoneyTransaction } from "@kitchen/shared";
+import type { MoneyCategory, MoneyRule, MoneyRuleField, MoneyRuleMatch, MoneySplitsChange, MoneyTransaction, NewMoneyRule } from "@kitchen/shared";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { MoneyApi } from "./api.js";
 import { centsText, dollarsToCents, ruleText } from "./format.js";
@@ -25,14 +25,29 @@ export function Money({ api }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Categories and rules load once; changes made here keep them current.
   useEffect(() => {
     let cancelled = false;
-    Promise.all([api.transactions({ uncategorized: onlyUncategorized }), api.categories(), api.rules()]).then(
-      ([t, c, r]) => {
+    Promise.all([api.categories(), api.rules()]).then(
+      ([c, r]) => {
         if (cancelled) return;
-        setTxs(t);
         setCats(c);
         setRules(r);
+      },
+      (error: unknown) => !cancelled && setProblem(reasonOf(error)),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  // Transactions load again when the filter changes.
+  useEffect(() => {
+    let cancelled = false;
+    api.transactions({ uncategorized: onlyUncategorized }).then(
+      (t) => {
+        if (cancelled) return;
+        setTxs(t);
         setProblem(null);
       },
       (error: unknown) => {
@@ -86,6 +101,7 @@ export function Money({ api }: Props) {
           txs={txs}
           cats={cats}
           busy={busy}
+          failed={problem !== null}
           onlyUncategorized={onlyUncategorized}
           setOnlyUncategorized={setOnlyUncategorized}
           setCategory={(t, categoryId) => run(async () => replace(await api.setCategory(t.id, categoryId)))}
@@ -135,12 +151,13 @@ export function Money({ api }: Props) {
   );
 }
 
-type Splits = { categoryId: string; amountCents: number }[];
+type Splits = MoneySplitsChange["splits"];
 
 function Transactions(props: {
   txs: MoneyTransaction[] | undefined;
   cats: MoneyCategory[];
   busy: boolean;
+  failed: boolean;
   onlyUncategorized: boolean;
   setOnlyUncategorized: (value: boolean) => void;
   setCategory: (t: MoneyTransaction, categoryId: string | null) => Promise<boolean>;
@@ -156,7 +173,7 @@ function Transactions(props: {
         Only uncategorized
       </label>
       {txs === undefined && <p>Loading transactions…</p>}
-      {txs?.length === 0 && <p>{props.onlyUncategorized ? "Everything has a category." : "No transactions yet. They arrive once the bank is connected."}</p>}
+      {txs?.length === 0 && !props.failed && <p>{props.onlyUncategorized ? "Everything has a category." : "No transactions yet. They arrive once the bank is connected."}</p>}
       <ul className="money-list" aria-label="Transactions">
         {txs?.map((t) => (
           <li key={t.id} className="money-tx" aria-label={`${t.payee} ${centsText(t.amountCents)} ${t.date}`}>
@@ -300,7 +317,7 @@ function Rules(props: {
   rules: MoneyRule[];
   busy: boolean;
   addCategory: (name: string) => Promise<boolean>;
-  addRule: (rule: { field: MoneyRuleField; match: MoneyRuleMatch; pattern: string; categoryId: string }) => Promise<boolean>;
+  addRule: (rule: NewMoneyRule) => Promise<boolean>;
   removeRule: (rule: MoneyRule) => Promise<boolean>;
   moveRule: (index: number, by: -1 | 1) => Promise<boolean>;
   applyRules: () => Promise<boolean>;

@@ -143,6 +143,16 @@ function checkRule(rule: NewRule): NewRule {
 
 const isDuplicateKey = (e: unknown) => e instanceof Error && "number" in e && (e.number === 2627 || e.number === 2601);
 
+/** Runs a category write, turning a clash with an existing name into a conflict. */
+async function uniqueName<T>(name: string, write: () => Promise<T>): Promise<T> {
+  try {
+    return await write();
+  } catch (e) {
+    if (isDuplicateKey(e)) throw new MoneyError("conflict", `There's already a category called ${name}.`);
+    throw e;
+  }
+}
+
 interface TransactionRow {
   id: string;
   accountId: string;
@@ -296,7 +306,10 @@ export function createMoney(pool: mssql.ConnectionPool): Money {
         .input("c", GUID, want)
         .query(
           `UPDATE money_transaction SET category_id = @c, category_source = CASE WHEN @c IS NULL THEN NULL ELSE 'rule' END, updated_at = SYSUTCDATETIME()
-           WHERE id = @t AND household_id = @h`,
+           WHERE id = @t AND household_id = @h
+             -- Checked again here, so a category set by hand or a split made meanwhile is never overwritten.
+             AND (category_source IS NULL OR category_source = 'rule')
+             AND NOT EXISTS (SELECT 1 FROM money_split s WHERE s.transaction_id = @t)`,
         );
       if (want !== null) changed++;
     }
@@ -338,22 +351,19 @@ export function createMoney(pool: mssql.ConnectionPool): Money {
 
     async addCategory(householdId, name) {
       const clean = cleanName(name, "A category name", MAX_NAME);
-      try {
+      return uniqueName(clean, async () => {
         const r = await onPool()
           .input("h", GUID, householdId)
           .input("n", mssql.NVarChar(MAX_NAME), clean)
           .query("INSERT money_category (household_id, name) OUTPUT inserted.id, inserted.name VALUES (@h, @n)");
         const row = r.recordset[0] as Category;
         return { id: id(row.id), name: row.name };
-      } catch (e) {
-        if (isDuplicateKey(e)) throw new MoneyError("conflict", `There's already a category called ${clean}.`);
-        throw e;
-      }
+      });
     },
 
     async renameCategory(householdId, categoryId, name) {
       const clean = cleanName(name, "A category name", MAX_NAME);
-      try {
+      return uniqueName(clean, async () => {
         const r = await onPool()
           .input("h", GUID, householdId)
           .input("c", GUID, categoryId)
@@ -362,10 +372,7 @@ export function createMoney(pool: mssql.ConnectionPool): Money {
         const row = r.recordset[0] as Category | undefined;
         if (!row) throw new MoneyError("not-found", "There's no such category.");
         return { id: id(row.id), name: row.name };
-      } catch (e) {
-        if (isDuplicateKey(e)) throw new MoneyError("conflict", `There's already a category called ${clean}.`);
-        throw e;
-      }
+      });
     },
 
     async transactions(householdId, filter = {}) {
@@ -446,6 +453,7 @@ export function createMoney(pool: mssql.ConnectionPool): Money {
     async updateRule(householdId, ruleId, rule) {
       const clean = checkRule(rule);
       return inTransaction(async (request) => {
+        await lockRules(request, householdId);
         await checkCategory(request, householdId, clean.categoryId);
         const r = await request()
           .input("h", GUID, householdId)
@@ -461,8 +469,11 @@ export function createMoney(pool: mssql.ConnectionPool): Money {
     },
 
     async removeRule(householdId, ruleId) {
-      const r = await onPool().input("h", GUID, householdId).input("r", GUID, ruleId).query("DELETE money_rule WHERE id = @r AND household_id = @h");
-      if (r.rowsAffected[0] === 0) throw new MoneyError("not-found", "There's no such rule.");
+      await inTransaction(async (request) => {
+        await lockRules(request, householdId);
+        const r = await request().input("h", GUID, householdId).input("r", GUID, ruleId).query("DELETE money_rule WHERE id = @r AND household_id = @h");
+        if (r.rowsAffected[0] === 0) throw new MoneyError("not-found", "There's no such rule.");
+      });
     },
 
     async reorderRules(householdId, ruleIds) {

@@ -126,3 +126,13 @@ describe("the money screen: rules and categories", () => {
     await vi.waitFor(() => expect(api.ruleList.map((r) => r.pattern)).toEqual(["grocer"]));
   });
 });
+
+describe("the money screen when the API is down", () => {
+  it("says why, and doesn't claim there are no transactions", async () => {
+    const api = inMemoryMoneyApi();
+    api.transactions = async () => Promise.reject(new Error("Money isn't available right now."));
+    open(api);
+    expect((await screen.findByRole("alert")).textContent).toMatch(/isn't available/);
+    expect(screen.queryByText(/No transactions yet/)).toBeNull();
+  });
+});
