@@ -117,7 +117,7 @@ The web app signs in with Microsoft Entra through MSAL, and every API function e
 
 Do these before merging card F4's pull request, or just after it. Until they're done, the API refuses every request that needs sign-in with 500, the web app says sign-in isn't set up, and each Dev deploy ends with a warning. Run them in bash (Git Bash works), signed in to the Azure CLI as the subscription owner. For Prod, repeat with `prod` in place of `dev`.
 
-1. Create the app registration `kitchen-dev`: this tenant only, the web app's address and Vite's local server as single-page-app redirect URIs, and an API scope `access_as_user` that issues v2 tokens (the API rejects v1 tokens).
+1. Create the app registration `kitchen-dev`: this tenant only, the web app's address, its MSAL redirect bridge (`/redirect.html`, which silent token renewal returns to) and Vite's local server as single-page-app redirect URIs, and an API scope `access_as_user` that issues v2 tokens (the API rejects v1 tokens).
 
    Copy this block as it is (the heredoc's closing `EOF` must start its line):
 
@@ -129,7 +129,7 @@ scope=$(powershell -NoProfile -Command '[guid]::NewGuid().ToString()' | tr -d '\
 cat > kitchen-app.json <<EOF
 {
   "identifierUris": ["api://$app"],
-  "spa": { "redirectUris": ["https://$web/", "http://localhost:5173/"] },
+  "spa": { "redirectUris": ["https://$web/", "https://$web/redirect.html", "http://localhost:5173/", "http://localhost:5173/redirect.html"] },
   "api": {
     "requestedAccessTokenVersion": 2,
     "oauth2PermissionScopes": [{
@@ -176,7 +176,7 @@ The bootstrap already made `rg-kitchen-prod`, the `kitchen-github-prod` identity
 1. **First apply.** In GitHub, **Actions → Deploy Prod → Run workflow** on `main`. The build runs, then the deploy job waits: open the run, choose **Review deployments**, tick `prod` and approve. It applies Prod's Terraform (several minutes the first time; the SQL server is the slowest part), migrates the empty database, deploys both apps and checks them. Sign-in isn't set up yet, so the run ends with a warning about it. That's expected.
 
 2. **Sign-in.** Do the three steps under "Sign-in" above with `prod` in place of `dev` (`rg-kitchen-prod`, `--env prod`, Prod's vault):
-   1. Create the app registration `kitchen-prod`, with the Prod web app's address as its only redirect URI. Leave out `http://localhost:5173/`: in the JSON, `"redirectUris": ["https://$web/"]`.
+   1. Create the app registration `kitchen-prod`, with the Prod web app's address and its redirect bridge as its only redirect URIs. Leave out the `http://localhost:5173/` ones: in the JSON, `"redirectUris": ["https://$web/", "https://$web/redirect.html"]`.
    2. Run `gh variable set KITCHEN_AUTH_CLIENT_ID --env prod --body "$app"`.
    3. Put your object ID in Prod's `household-members` secret. Give yourself Key Vault Secrets Officer on Prod's vault first.
 
