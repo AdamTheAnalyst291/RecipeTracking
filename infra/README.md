@@ -296,9 +296,12 @@ rg=rg-kitchen-prod
 acct=$(az storage account list -g $rg --query "[?tags.purpose=='database-exports'].name | [0]" -o tsv)
 me=$(az ad signed-in-user show --query id -o tsv)
 upn=$(az ad signed-in-user show --query userPrincipalName -o tsv)
+bacpac=$(cygpath -w ~/restore.bacpac 2>/dev/null || echo ~/restore.bacpac)   # Git Bash: a Windows path, which az and SqlPackage need under MSYS_NO_PATHCONV
+# The export holds real data and the repository is public: keep the file in your home folder, never in the repo.
 
 # 1. Give yourself read access to the exports. An Owner can't read blobs without a data role.
-#    The role takes a minute or two to apply.
+#    The role can take up to about 10 minutes to apply. If step 2 says you lack the
+#    "required permissions", wait a minute and retry.
 container_id="$(az storage account show -g $rg -n "$acct" --query id -o tsv)/blobServices/default/containers/database-exports"
 az role assignment create --role "Storage Blob Data Reader" --assignee-object-id "$me" --assignee-principal-type User --scope "$container_id"
 
@@ -306,7 +309,7 @@ az role assignment create --role "Storage Blob Data Reader" --assignee-object-id
 az storage blob list --auth-mode login --account-name "$acct" -c database-exports --prefix sqldb-kitchen-app/ \
   --query "[].{name:name, bytes:properties.contentLength}" -o table
 blob=$(az storage blob list --auth-mode login --account-name "$acct" -c database-exports --prefix sqldb-kitchen-app/ --query "sort_by([], &name)[-1].name" -o tsv)
-az storage blob download --auth-mode login --account-name "$acct" -c database-exports -n "$blob" -f restore.bacpac
+az storage blob download --auth-mode login --account-name "$acct" -c database-exports -n "$blob" -f "$bacpac"
 
 # 3. Create a scratch server with you as its only admin, open it to your IP, and add an empty free database.
 scratch=sql-kitchen-restore-$RANDOM
@@ -319,7 +322,7 @@ az sql db create -g $rg -s "$scratch" -n kitchen-restore -e GeneralPurpose -f Ge
 
 # 4. Import the export into it, signed in as you.
 token=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv)
-dotnet tool run sqlpackage /Action:Import /SourceFile:restore.bacpac \
+dotnet tool run sqlpackage /Action:Import /SourceFile:"$bacpac" \
   /TargetServerName:"$scratch.database.windows.net" /TargetDatabaseName:kitchen-restore /AccessToken:"$token"
 ```
 
@@ -335,7 +338,7 @@ dotnet tool run sqlpackage /Action:Import /SourceFile:restore.bacpac \
    ```bash
    az sql server delete -g $rg -n "$scratch" --yes
    az role assignment delete --assignee "$me" --role "Storage Blob Data Reader" --scope "$container_id"
-   rm restore.bacpac
+   rm ~/restore.bacpac
    ```
 
 The free offer allows 10 free databases per subscription, all in one region (`centralus`), and Dev and Prod use two. If `az sql db create` refuses `--use-free-limit`, leave out the two free options and add `--auto-pause-delay 60` instead. That database is serverless and billed by the second, a few cents for a drill, so delete it straight after.
@@ -368,7 +371,7 @@ Open `kitchen-pitr` as in step 5 of the drill. To put it back into Prod (below),
 ```bash
 token=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv)
 dotnet tool run sqlpackage /Action:Export /SourceServerName:"$scratch.database.windows.net" /SourceDatabaseName:kitchen-pitr \
-  /AccessToken:"$token" /TargetFile:restore.bacpac
+  /AccessToken:"$token" /TargetFile:"$bacpac"
 ```
 
 Delete the scratch server when you're done.
@@ -398,7 +401,7 @@ Do this only if Prod's data is lost or wrong and the app must run on the restore
    ip=$(curl -s https://api.ipify.org)
    az sql server firewall-rule create -g $rg -s "$srv" -n restore-import --start-ip-address "$ip" --end-ip-address "$ip"
    token=$(az account get-access-token --resource https://database.windows.net/ --query accessToken -o tsv)
-   dotnet tool run sqlpackage /Action:Import /SourceFile:restore.bacpac \
+   dotnet tool run sqlpackage /Action:Import /SourceFile:"$bacpac" \
      /TargetServerName:"$srv.database.windows.net" /TargetDatabaseName:sqldb-kitchen-app /AccessToken:"$token"
    az sql server firewall-rule delete -g $rg -s "$srv" -n restore-import
    ```
