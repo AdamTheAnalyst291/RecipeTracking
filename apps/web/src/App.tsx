@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { checkApiHealth, loadConfig, type ApiHealth } from "./health.js";
 import { fetchMe, type Me } from "./me.js";
 import { createMealPlanApi } from "./mealPlan/api.js";
-import { MealPlan } from "./mealPlan/MealPlan.js";
-import { PantryScreen } from "./PantryScreen.js";
 import { createRecipeApi } from "./recipes/api.js";
-import { Recipes } from "./recipes/Recipes.js";
 import { createShoppingApi } from "./shopping/api.js";
-import { Shopping } from "./shopping/Shopping.js";
+import { Kitchen } from "./shell/Kitchen.js";
 import { startSignIn, type SignIn } from "./signIn.js";
 
 type Session =
@@ -89,15 +86,16 @@ function SessionView({ session, onSignedOut }: { session: Session; onSignedOut: 
       const { me } = session;
       if (me.state === "member") {
         return (
-          <>
-            <p>
-              Signed in as {me.profile.name ?? session.signIn.account?.username} (household {me.profile.household.id}). {signOut}
-            </p>
-            <KitchenMealPlan apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
-            <KitchenShopping apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
-            <KitchenRecipes apiUrl={session.apiUrl} getToken={session.signIn.getToken} />
-            <PantryScreen apiUrl={session.apiUrl} getToken={session.signIn.getToken} onSignedOut={onSignedOut} />
-          </>
+          <SignedInKitchen
+            apiUrl={session.apiUrl}
+            getToken={session.signIn.getToken}
+            onSignedOut={onSignedOut}
+            account={
+              <p>
+                Signed in as {me.profile.name ?? session.signIn.account?.username} (household {me.profile.household.id}). {signOut}
+              </p>
+            }
+          />
         );
       }
       if (me.state === "signed-out") {
@@ -123,18 +121,20 @@ function SessionView({ session, onSignedOut }: { session: Session; onSignedOut: 
   }
 }
 
-function KitchenMealPlan({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
-  const api = useMemo(() => createMealPlanApi(apiUrl, getToken), [apiUrl, getToken]);
+function SignedInKitchen({
+  apiUrl,
+  getToken,
+  onSignedOut,
+  account,
+}: {
+  apiUrl: string;
+  getToken: () => Promise<string>;
+  onSignedOut: () => void;
+  account: ReactNode;
+}) {
+  const mealPlan = useMemo(() => createMealPlanApi(apiUrl, getToken), [apiUrl, getToken]);
   const recipes = useMemo(() => createRecipeApi(apiUrl, getToken), [apiUrl, getToken]);
-  return <MealPlan api={api} recipes={recipes} />;
-}
-
-function KitchenRecipes({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
-  const api = useMemo(() => createRecipeApi(apiUrl, getToken), [apiUrl, getToken]);
-  return <Recipes api={api} />;
-}
-
-function KitchenShopping({ apiUrl, getToken }: { apiUrl: string; getToken: () => Promise<string> }) {
-  const api = useMemo(() => createShoppingApi(apiUrl, getToken), [apiUrl, getToken]);
-  return <Shopping api={api} />;
+  const shopping = useMemo(() => createShoppingApi(apiUrl, getToken), [apiUrl, getToken]);
+  const pantry = useMemo(() => ({ apiUrl, getToken, onSignedOut }), [apiUrl, getToken, onSignedOut]);
+  return <Kitchen mealPlan={mealPlan} recipes={recipes} shopping={shopping} pantry={pantry} account={account} />;
 }
