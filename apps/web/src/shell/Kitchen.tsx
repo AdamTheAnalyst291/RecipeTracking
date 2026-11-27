@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
 import type { MealPlanApi } from "../mealPlan/api.js";
 import { MealPlan } from "../mealPlan/MealPlan.js";
+import type { MoneyApi } from "../money/api.js";
+import { Money } from "../money/Money.js";
 import { PantryScreen } from "../PantryScreen.js";
 import type { RecipeApi } from "../recipes/api.js";
 import { Recipes } from "../recipes/Recipes.js";
@@ -15,6 +17,7 @@ interface Props {
   recipes: RecipeApi;
   shopping: ShoppingApi;
   pantry: { apiUrl: string; getToken: () => Promise<string>; onSignedOut: () => void };
+  money: MoneyApi;
   /** Who is signed in, with the way to sign out. Shown on Today. */
   account: ReactNode;
   /** Today as `YYYY-MM-DD`; the device's clock unless a test says otherwise. */
@@ -25,7 +28,7 @@ interface Props {
  * The signed-in app: its screens behind the bottom navigation. A new screen (money, say) is
  * one more entry in this list.
  */
-export function Kitchen({ mealPlan, recipes, shopping, pantry, account, today: fixedToday }: Props) {
+export function Kitchen({ mealPlan, recipes, shopping, pantry, money, account, today: fixedToday }: Props) {
   const deviceToday = useToday();
   const today = fixedToday ?? deviceToday;
   const screens: Screen[] = [
@@ -65,6 +68,12 @@ export function Kitchen({ mealPlan, recipes, shopping, pantry, account, today: f
       // So an open recipe or a half-typed one survives a look at the pantry or the list.
       keepOpen: true,
       render: () => <Recipes api={recipes} />,
+    },
+    {
+      id: "money",
+      label: "Money",
+      icon: "M3 6h18v12H3zM3 10h18M7 15h3",
+      render: () => <Money api={money} />,
     },
   ];
   return <AppShell screens={screens} />;

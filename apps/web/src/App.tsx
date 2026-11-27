@@ -3,6 +3,7 @@ import { checkApiHealth, loadConfig, type ApiHealth } from "./health.js";
 import { fetchMe, type Me } from "./me.js";
 import { createMealPlanApi } from "./mealPlan/api.js";
 import { createRecipeApi } from "./recipes/api.js";
+import { createMoneyApi } from "./money/api.js";
 import { createShoppingApi } from "./shopping/api.js";
 import { Kitchen } from "./shell/Kitchen.js";
 import { startSignIn, type SignIn } from "./signIn.js";
@@ -136,5 +137,6 @@ function SignedInKitchen({
   const recipes = useMemo(() => createRecipeApi(apiUrl, getToken), [apiUrl, getToken]);
   const shopping = useMemo(() => createShoppingApi(apiUrl, getToken), [apiUrl, getToken]);
   const pantry = useMemo(() => ({ apiUrl, getToken, onSignedOut }), [apiUrl, getToken, onSignedOut]);
-  return <Kitchen mealPlan={mealPlan} recipes={recipes} shopping={shopping} pantry={pantry} account={account} />;
+  const money = useMemo(() => createMoneyApi(apiUrl, getToken), [apiUrl, getToken]);
+  return <Kitchen mealPlan={mealPlan} recipes={recipes} shopping={shopping} pantry={pantry} money={money} account={account} />;
 }

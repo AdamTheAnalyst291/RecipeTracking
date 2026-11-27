@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inMemoryMealPlanApi } from "../mealPlan/test-api.js";
 import { inMemoryRecipeApi } from "../recipes/test-api.js";
+import { inMemoryMoneyApi } from "../money/test-api.js";
 import { inMemoryShoppingApi } from "../shopping/test-api.js";
 import { Kitchen } from "./Kitchen.js";
 
@@ -39,6 +40,7 @@ function open({ meals = planned(), mealPlan = inMemoryMealPlanApi(meals), today 
       mealPlan={mealPlan}
       recipes={inMemoryRecipeApi()}
       shopping={inMemoryShoppingApi()}
+      money={inMemoryMoneyApi()}
       pantry={{ apiUrl: "https://api.example.net", getToken: async () => "token", onSignedOut: () => {} }}
       account={<p>Signed in as Test User</p>}
       today={today ?? undefined}
@@ -55,7 +57,7 @@ describe("the bottom navigation on a phone", () => {
   it("offers Today, Plan, Shopping, Pantry and Recipes, and opens on Today", async () => {
     const { nav, current, heading } = open();
 
-    expect(nav().getAllByRole("button").map((b) => b.textContent)).toEqual(["Today", "Plan", "Shopping", "Pantry", "Recipes"]);
+    expect(nav().getAllByRole("button").map((b) => b.textContent)).toEqual(["Today", "Plan", "Shopping", "Pantry", "Recipes", "Money"]);
     expect(current()).toBe("Today");
     await heading("Today");
   });
@@ -68,6 +70,7 @@ describe("the bottom navigation on a phone", () => {
       ["Shopping", "Shopping list"],
       ["Pantry", "Pantry"],
       ["Recipes", "Recipes"],
+      ["Money", "Money"],
       ["Today", "Today"],
     ] as const) {
       await go(tab);

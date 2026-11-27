@@ -1,6 +1,7 @@
-import { connectEntra, createCooking, createMealPlan, createPantry, createShoppingLists, resolveHousehold, type Pantry } from "@kitchen/db";
+import { connectEntra, createCooking, createMealPlan, createMoney, createPantry, createShoppingLists, resolveHousehold, type Pantry } from "@kitchen/db";
 import type { CookingAccess } from "./functions/cooking.js";
 import type { MealPlanAccess } from "./functions/mealPlan.js";
+import type { MoneyAccess } from "./functions/money.js";
 import type { PantryAccess } from "./functions/pantry.js";
 import type { ShoppingListAccess } from "./functions/shoppingList.js";
 import { createSqlRecipeStore, type RecipeStore } from "./recipes/store.js";
@@ -63,4 +64,11 @@ export const shoppingListAccess: ShoppingListAccess = async (user) => {
   const db = await getPool();
   const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
   return { lists: createShoppingLists(db), householdId };
+};
+
+/** Money (accounts, transactions, categories, rules) for the signed-in member's household, against the real database. */
+export const moneyAccess: MoneyAccess = async (user) => {
+  const db = await getPool();
+  const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
+  return { money: createMoney(db), householdId };
 };
