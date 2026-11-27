@@ -1,4 +1,14 @@
 export { ensureBackupReader, type BackupReader } from "./backupReader.js";
+export {
+  createBanks,
+  type Bank,
+  type BankItem,
+  type BankRun,
+  type Banks,
+  type NewBank,
+  type RunResult,
+  type WithdrawnTransaction,
+} from "./banks.js";
 export { connectEntra, type ConnectOptions } from "./connect.js";
 export { listMigrations, migrationsDir, runMigrations, type Migration } from "./migrate.js";
 export {

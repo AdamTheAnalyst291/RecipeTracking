@@ -23,6 +23,11 @@ output "key_vault_name" {
   value = azurerm_key_vault.this.name
 }
 
+output "token_vault_name" {
+  description = "The vault holding only the Plaid access tokens the API writes (card $2)."
+  value       = azurerm_key_vault.tokens.name
+}
+
 output "key_vault_uri" {
   value = azurerm_key_vault.this.vault_uri
 }
@@ -51,13 +56,15 @@ output "tenant_id" {
 output "settings" {
   description = "The choices that set this environment apart, read from the resources themselves, so an environment root's tests can check what it passed in. Nothing here is secret."
   value = {
-    resource_group_name        = azurerm_key_vault.this.resource_group_name
-    location                   = azurerm_mssql_server.this.location
-    sql_admin_login            = azurerm_mssql_server.this.azuread_administrator[0].login_username
-    sql_admin_object_id        = azurerm_mssql_server.this.azuread_administrator[0].object_id
-    database_uses_free_offer   = azapi_resource.app_database.body.properties.useFreeLimit
-    key_vault_purge_protection = azurerm_key_vault.this.purge_protection_enabled
-    api_allowed_origins        = azapi_resource_action.api_cors.body.properties.cors.allowedOrigins
+    resource_group_name          = azurerm_key_vault.this.resource_group_name
+    location                     = azurerm_mssql_server.this.location
+    sql_admin_login              = azurerm_mssql_server.this.azuread_administrator[0].login_username
+    sql_admin_object_id          = azurerm_mssql_server.this.azuread_administrator[0].object_id
+    database_uses_free_offer     = azapi_resource.app_database.body.properties.useFreeLimit
+    key_vault_purge_protection   = azurerm_key_vault.this.purge_protection_enabled
+    token_vault_purge_protection = azurerm_key_vault.tokens.purge_protection_enabled
+    plaid_environment            = azurerm_function_app_flex_consumption.api.app_settings["PLAID_ENV"]
+    api_allowed_origins          = azapi_resource_action.api_cors.body.properties.cors.allowedOrigins
   }
 }
 

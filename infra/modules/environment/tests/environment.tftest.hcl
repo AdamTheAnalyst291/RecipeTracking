@@ -92,6 +92,79 @@ run "api_can_read_key_vault_secrets" {
   }
 }
 
+run "plaid_access_tokens_go_to_a_vault_of_their_own" {
+  command = plan
+
+  # Give the two vaults known ids at plan time, so the role assignments' scopes can be compared.
+  override_resource {
+    target          = azurerm_key_vault.this
+    override_during = plan
+    values          = { id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-kitchen-dev/providers/Microsoft.KeyVault/vaults/main" }
+  }
+  override_resource {
+    target          = azurerm_key_vault.tokens
+    override_during = plan
+    values          = { id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-kitchen-dev/providers/Microsoft.KeyVault/vaults/tokens" }
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.api_token_vault.role_definition_name == "Key Vault Secrets Officer" && azurerm_role_assignment.api_token_vault.scope == azurerm_key_vault.tokens.id
+    error_message = "The API's identity must be able to write secrets in the token vault, to store Plaid access tokens."
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.api_key_vault.role_definition_name == "Key Vault Secrets User" && azurerm_role_assignment.api_key_vault.scope == azurerm_key_vault.this.id
+    error_message = "The API's identity must only read the main vault: write access there could change household-members."
+  }
+
+  assert {
+    condition     = azurerm_key_vault.tokens.rbac_authorization_enabled && azurerm_key_vault.tokens.name != azurerm_key_vault.this.name
+    error_message = "The token vault must be a separate vault using Azure RBAC."
+  }
+
+  assert {
+    condition     = length(azurerm_key_vault.tokens.name) <= 24 && length("kv-kitchen-prod-${substr(sha1("x"), 0, 6)}-t") <= 24
+    error_message = "Key Vault names can be at most 24 characters, in every environment."
+  }
+
+  assert {
+    condition     = azurerm_key_vault.tokens.purge_protection_enabled == azurerm_key_vault.this.purge_protection_enabled
+    error_message = "The token vault's purge protection must follow the main vault's."
+  }
+
+  assert {
+    condition     = azurerm_function_app_flex_consumption.api.app_settings["KITCHEN_TOKEN_VAULT_NAME"] == azurerm_key_vault.tokens.name
+    error_message = "The API must be told which vault takes the access tokens."
+  }
+}
+
+run "bank_sync_settings_come_from_the_main_vault" {
+  command = plan
+
+  assert {
+    condition     = azurerm_function_app_flex_consumption.api.app_settings["PLAID_ENV"] == "sandbox"
+    error_message = "Plaid defaults to Sandbox."
+  }
+
+  assert {
+    condition = alltrue([
+      for name, secret in { PLAID_CLIENT_ID = "plaid-client-id", PLAID_SECRET = "plaid-secret", KITCHEN_ALERT_NTFY_TOPIC = "ntfy-topic" } :
+      azurerm_function_app_flex_consumption.api.app_settings[name] == "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.this.name};SecretName=${secret})"
+    ])
+    error_message = "The Plaid keys and the ntfy topic must be Key Vault references to the main vault, never values."
+  }
+}
+
+run "plaid_environment_must_be_sandbox_or_production" {
+  command = plan
+
+  variables {
+    plaid_environment = "development"
+  }
+
+  expect_failures = [var.plaid_environment]
+}
+
 run "app_database_uses_the_free_offer_and_pauses_instead_of_billing" {
   command = plan
 

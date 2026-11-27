@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import type { BanksApi } from "../banks/api.js";
+import { Banks } from "../banks/Banks.js";
+import type { OpenLink } from "../banks/plaidLink.js";
 import type { MealPlanApi } from "../mealPlan/api.js";
 import { MealPlan } from "../mealPlan/MealPlan.js";
 import type { MoneyApi } from "../money/api.js";
@@ -21,6 +24,8 @@ interface Props {
   money: MoneyApi;
   /** Monthly budgets (card $3), shown as a tab of the money screen. */
   budgets: BudgetApi;
+  /** Bank connections through Plaid, and the way to open Plaid Link. */
+  banks: { api: BanksApi; openLink: OpenLink };
   /** Who is signed in, with the way to sign out. Shown on Today. */
   account: ReactNode;
   /** Today as `YYYY-MM-DD`; the device's clock unless a test says otherwise. */
@@ -31,7 +36,7 @@ interface Props {
  * The signed-in app: its screens behind the bottom navigation. A new screen (money, say) is
  * one more entry in this list.
  */
-export function Kitchen({ mealPlan, recipes, shopping, pantry, money, budgets, account, today: fixedToday }: Props) {
+export function Kitchen({ mealPlan, recipes, shopping, pantry, money, budgets, banks, account, today: fixedToday }: Props) {
   const deviceToday = useToday();
   const today = fixedToday ?? deviceToday;
   const screens: Screen[] = [
@@ -77,6 +82,12 @@ export function Kitchen({ mealPlan, recipes, shopping, pantry, money, budgets, a
       label: "Money",
       icon: "M3 6h18v12H3zM3 10h18M7 15h3",
       render: () => <Money api={money} budgets={budgets} today={today} />,
+    },
+    {
+      id: "banks",
+      label: "Banks",
+      icon: "M3 10 12 4l9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18",
+      render: () => <Banks api={banks.api} openLink={banks.openLink} />,
     },
   ];
   return <AppShell screens={screens} />;

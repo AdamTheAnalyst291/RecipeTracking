@@ -33,9 +33,20 @@ variable "function_maximum_instance_count" {
 }
 
 variable "key_vault_purge_protection" {
-  description = "Stops a deleted Key Vault from being purged before its retention ends. Off for Dev so it can be torn down and rebuilt; turn it on for Prod. Once on, it can't be turned off."
+  description = "Stops a deleted Key Vault (the main one and the token vault) from being purged before its retention ends. Off for Dev so it can be torn down and rebuilt; turn it on for Prod. Once on, it can't be turned off."
   type        = bool
   default     = false
+}
+
+variable "plaid_environment" {
+  description = "Which Plaid the bank sync talks to (card $2): sandbox in Dev, production in Prod. The plaid-secret in the environment's vault must be that environment's."
+  type        = string
+  default     = "sandbox"
+
+  validation {
+    condition     = contains(["sandbox", "production"], var.plaid_environment)
+    error_message = "plaid_environment must be sandbox or production."
+  }
 }
 
 variable "auth_client_id" {

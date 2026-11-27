@@ -79,6 +79,7 @@ Set `environments = ["dev", "uat", "prod"]` in `terraform.tfvars`, apply again, 
 - **Web app:** a Static Web App on the Free plan.
 - **API:** a Linux Functions app on Flex Consumption (Node 24) with a system-assigned managed identity. It reaches its own storage account (deployment package and host state) with that identity, not a key, and allows calls from the web app's address (plus `http://localhost:5173` in Dev).
 - **Key Vault** with Azure RBAC. The API's identity has Key Vault Secrets User, so it can read secrets and nothing else, and finds the vault through its `KITCHEN_KEY_VAULT_URI` app setting. Terraform never sees secret values.
+- **Token vault**, a second Key Vault with Azure RBAC that holds only the Plaid access tokens (card $2). The API's identity has Key Vault Secrets Officer on it, and only on it, so connecting a bank can store its token without the API ever being able to write the main vault. The API finds it through `KITCHEN_TOKEN_VAULT_NAME`.
 - **Azure SQL:** a server that accepts Microsoft Entra sign-in only, with the environment's deploy identity (`kitchen-github-<env>`) as its admin so the pipeline can run migrations, and a firewall that lets in Azure services only. Its database uses the free offer and pauses for the rest of the month instead of billing when the free allowance runs out.
 - **Database exports** (Prod only, `database_exports`): a storage account (Terraform refuses to destroy it) `stkitchenbak<env><suffix>` with Entra sign-in only, blob versioning, 30-day soft delete and a private `database-exports` container, where the weekly export writes. See "Backups".
 
@@ -93,6 +94,11 @@ Secrets go in the environment's Key Vault, never in git, GitHub or app settings.
 | `plaid-client-id` | Plaid client ID | Bank sync (cards $0 and $2) |
 | `plaid-secret` | Plaid secret: the **Sandbox** one in Dev's vault, the **Production** one in Prod's | Bank sync (cards $0 and $2) |
 | `household-members` | Entra object IDs of the people allowed in, comma-separated (today just yours) | Sign-in (card F4; see "Sign-in" below) |
+| `ntfy-topic` | The ntfy.sh topic the bank sync's failure alerts go to: a long random name of letters, digits, `-` and `_` (anyone who knows it can read the alerts). Subscribe to it in the ntfy phone app. | Bank sync alerts (card $2) |
+
+Plaid access tokens are not on this list: the API writes one itself each time a bank is connected (`plaid-access-token-<item id>`), into a second vault that holds nothing else, `kv-kitchen-<env>-<suffix>-t` (Terraform output `token_vault_name`). The API can write there (Key Vault Secrets Officer) but only read the main vault, so nothing it does can change `household-members`. You don't add anything to the token vault.
+
+To make a phone alert topic: `powershell -NoProfile -Command "'kitchen-' + [guid]::NewGuid().ToString('N')"` gives a name; add it as `ntfy-topic` in both vaults (or a different one per environment), then subscribe to it in the ntfy app.
 
 Add or update one in the portal (the vault, **Objects**, **Secrets**, **Generate/Import**), or with the Azure CLI. Reading the value from a prompt keeps it out of your shell history:
 

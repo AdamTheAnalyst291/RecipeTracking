@@ -3,6 +3,8 @@ import { checkApiHealth, loadConfig, type ApiHealth } from "./health.js";
 import { fetchMe, type Me } from "./me.js";
 import { createMealPlanApi } from "./mealPlan/api.js";
 import { createRecipeApi } from "./recipes/api.js";
+import { createBanksApi } from "./banks/api.js";
+import { openPlaidLink } from "./banks/plaidLink.js";
 import { createMoneyApi } from "./money/api.js";
 import { createBudgetApi } from "./money/budget-api.js";
 import { createShoppingApi } from "./shopping/api.js";
@@ -140,5 +142,6 @@ function SignedInKitchen({
   const pantry = useMemo(() => ({ apiUrl, getToken, onSignedOut }), [apiUrl, getToken, onSignedOut]);
   const money = useMemo(() => createMoneyApi(apiUrl, getToken), [apiUrl, getToken]);
   const budgets = useMemo(() => createBudgetApi(apiUrl, getToken), [apiUrl, getToken]);
-  return <Kitchen mealPlan={mealPlan} recipes={recipes} shopping={shopping} pantry={pantry} money={money} budgets={budgets} account={account} />;
+  const banks = useMemo(() => ({ api: createBanksApi(apiUrl, getToken), openLink: openPlaidLink }), [apiUrl, getToken]);
+  return <Kitchen mealPlan={mealPlan} recipes={recipes} shopping={shopping} pantry={pantry} money={money} budgets={budgets} banks={banks} account={account} />;
 }
