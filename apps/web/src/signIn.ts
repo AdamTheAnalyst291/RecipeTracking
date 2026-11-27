@@ -3,6 +3,7 @@ import {
   BrowserAuthErrorCodes,
   createStandardPublicClientApplication,
   InteractionRequiredAuthError,
+  ServerError,
   type AccountInfo,
 } from "@azure/msal-browser";
 import type { AuthSettings } from "./health.js";
@@ -23,12 +24,12 @@ export function apiScope(clientId: string): string {
 
 /**
  * Whether a failed silent renewal needs a trip to Microsoft: MSAL says the user must sign in
- * again, or the hidden iframe's answer never came back through the redirect bridge. Anything
- * else (offline, a network error) is left to the caller, so a phone without signal isn't sent
- * off to a sign-in page it can't load.
+ * again, Entra turned the renewal down, or the hidden iframe's answer never came back through
+ * the redirect bridge. Anything else (offline, a network error) is left to the caller, so a
+ * phone without signal isn't sent off to a sign-in page it can't load.
  */
-function needsMicrosoftAgain(error: unknown): boolean {
-  if (error instanceof InteractionRequiredAuthError) return true;
+function needsInteractiveSignIn(error: unknown): boolean {
+  if (error instanceof InteractionRequiredAuthError || error instanceof ServerError) return true;
   return error instanceof BrowserAuthError && error.errorCode === BrowserAuthErrorCodes.timedOut;
 }
 
@@ -67,7 +68,7 @@ export async function startSignIn(auth: AuthSettings): Promise<SignIn> {
       try {
         return (await msal.acquireTokenSilent({ scopes, account, redirectUri: bridgeUri })).accessToken;
       } catch (error) {
-        if (needsMicrosoftAgain(error)) await msal.acquireTokenRedirect({ scopes, account });
+        if (needsInteractiveSignIn(error)) await msal.acquireTokenRedirect({ scopes, account });
         throw error;
       }
     },

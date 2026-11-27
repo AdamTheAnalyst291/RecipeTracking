@@ -3,6 +3,7 @@ import {
   BrowserAuthError,
   BrowserAuthErrorCodes,
   InteractionRequiredAuthError,
+  ServerError,
   type AccountInfo,
 } from "@azure/msal-browser";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -72,6 +73,15 @@ describe("getToken", () => {
 
   it("goes to Microsoft for a new sign-in when the silent renewal times out", async () => {
     msal.acquireTokenSilent.mockRejectedValue(bridgeTimeout());
+
+    const signIn = await startSignIn(auth);
+
+    await expect(signIn.getToken()).rejects.toThrow();
+    expect(msal.acquireTokenRedirect).toHaveBeenCalledWith({ scopes, account });
+  });
+
+  it("goes to Microsoft when Entra turns the silent renewal down", async () => {
+    msal.acquireTokenSilent.mockRejectedValue(new ServerError("invalid_request", "AADSTS50011: redirect URI mismatch"));
 
     const signIn = await startSignIn(auth);
 
