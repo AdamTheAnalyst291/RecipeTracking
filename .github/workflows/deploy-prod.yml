@@ -155,7 +155,7 @@ jobs:
         working-directory: infra/environments/prod
         run: |
           set -euo pipefail
-          for name in static_web_app_name function_app_name web_url api_url auth_client_id tenant_id sql_server_fqdn app_database_name; do
+          for name in static_web_app_name function_app_name function_app_client_id web_url api_url auth_client_id tenant_id sql_server_fqdn app_database_name; do
             value=$(terraform output -raw "$name")
             echo "$(tr '[:lower:]' '[:upper:]' <<< "$name")=$value" >> "$GITHUB_ENV"
           done
@@ -163,7 +163,7 @@ jobs:
 
       - name: Check the Terraform outputs arrived
         run: |
-          for v in STATIC_WEB_APP_NAME FUNCTION_APP_NAME WEB_URL API_URL SQL_SERVER_FQDN APP_DATABASE_NAME; do
+          for v in STATIC_WEB_APP_NAME FUNCTION_APP_NAME FUNCTION_APP_CLIENT_ID WEB_URL API_URL SQL_SERVER_FQDN APP_DATABASE_NAME; do
             [ -n "${!v}" ] || { echo "::error::$v is empty; check terraform output"; exit 1; }
           done
 
@@ -189,11 +189,14 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Also makes the weekly export's identity a read-only database user (card S2).
+      # Also makes the API's managed identity a database user that reads and writes the
+      # data, and the weekly export's identity a read-only one (card S2).
       - name: Apply the migrations
         env:
           SQL_SERVER: ${{ env.SQL_SERVER_FQDN }}
           SQL_DATABASE: ${{ env.APP_DATABASE_NAME }}
+          API_USER_NAME: ${{ env.FUNCTION_APP_NAME }}
+          API_USER_CLIENT_ID: ${{ env.FUNCTION_APP_CLIENT_ID }}
           BACKUP_READER_NAME: kitchen-github-prod-backup
           BACKUP_READER_CLIENT_ID: ${{ vars.AZURE_BACKUP_CLIENT_ID }}
         run: pnpm --filter @kitchen/db migrate

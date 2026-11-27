@@ -19,6 +19,16 @@ output "function_app_principal_id" {
   value       = azurerm_function_app_flex_consumption.api.identity[0].principal_id
 }
 
+output "function_app_client_id" {
+  description = "Client (application) ID of the API's managed identity: the migration step creates the API's database user from it. Not secret."
+  value       = data.azapi_resource.api_identity.output.properties.clientId
+}
+
+output "application_insights_name" {
+  description = "Where the API's logs go."
+  value       = azurerm_application_insights.api.name
+}
+
 output "key_vault_name" {
   value = azurerm_key_vault.this.name
 }

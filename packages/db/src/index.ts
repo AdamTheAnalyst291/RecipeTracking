@@ -1,4 +1,6 @@
+export { ensureApiUser } from "./apiUser.js";
 export { ensureBackupReader, type BackupReader } from "./backupReader.js";
+export type { EntraIdentity } from "./entraUser.js";
 export {
   createBanks,
   type Bank,

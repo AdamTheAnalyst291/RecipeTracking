@@ -111,10 +111,19 @@ resource "azurerm_function_app_flex_consumption" "api" {
     KITCHEN_ALERT_NTFY_TOPIC = "@Microsoft.KeyVault(VaultName=${azurerm_key_vault.this.name};SecretName=ntfy-topic)"
     # Where the API writes each bank connection's Plaid access token (see the token vault below).
     KITCHEN_TOKEN_VAULT_NAME = azurerm_key_vault.tokens.name
+
+    # The app database, which the API signs in to with its managed identity (no password).
+    # The migration step makes that identity a database user (packages/db, apiUser.ts).
+    SQL_SERVER   = azurerm_mssql_server.this.fully_qualified_domain_name
+    SQL_DATABASE = azapi_resource.app_database.name
   }
 
   site_config {
     minimum_tls_version = "1.2"
+    # Sends the Functions logs (context.log and context.error) and request traces here.
+    # The connection string names the resource and its ingestion key, which only lets
+    # someone send telemetry, not read it; Microsoft doesn't treat it as a secret.
+    application_insights_connection_string = azurerm_application_insights.api.connection_string
   }
 
   tags = local.tags
@@ -142,6 +151,42 @@ resource "azapi_resource_action" "api_cors" {
       }
     }
   }
+}
+
+# The client (application) ID of the API's system-assigned identity. azurerm only exposes
+# its object ID, but a database user created by SID needs the client ID (the migration step,
+# packages/db/src/apiUser.ts). Reading it needs no Microsoft Graph permission.
+data "azapi_resource" "api_identity" {
+  type                   = "Microsoft.ManagedIdentity/identities@2023-01-31"
+  name                   = "default"
+  parent_id              = azurerm_function_app_flex_consumption.api.id
+  response_export_values = ["properties.clientId"]
+}
+
+# --- Logs --------------------------------------------------------------------
+
+# Where the API's logs go. Pay-as-you-go: the first 5 GB a month are free, and the daily
+# caps (0.1 GB, about 3 GB a month) stop ingestion before that runs out. 30 days of
+# retention is included at no charge.
+resource "azurerm_log_analytics_workspace" "this" {
+  name                = "log-kitchen-${var.environment}-${local.suffix}"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+  daily_quota_gb      = 0.1
+  tags                = local.tags
+}
+
+resource "azurerm_application_insights" "api" {
+  name                 = "appi-kitchen-${var.environment}-${local.suffix}"
+  resource_group_name  = var.resource_group_name
+  location             = var.location
+  workspace_id         = azurerm_log_analytics_workspace.this.id
+  application_type     = "Node.JS"
+  retention_in_days    = 30
+  daily_data_cap_in_gb = 0.1
+  tags                 = local.tags
 }
 
 resource "azurerm_role_assignment" "api_storage" {
