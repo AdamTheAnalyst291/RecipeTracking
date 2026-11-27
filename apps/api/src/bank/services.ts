@@ -6,7 +6,8 @@ import { createKeyVault } from "./vault.js";
 /**
  * Plaid, Key Vault and the phone alert from the app settings: `PLAID_ENV` (sandbox in Dev,
  * production in Prod), `PLAID_CLIENT_ID` and `PLAID_SECRET` (Key Vault references),
- * `KITCHEN_KEY_VAULT_URI`, and `KITCHEN_ALERT_NTFY_TOPIC` (a Key Vault reference).
+ * `KITCHEN_TOKEN_VAULT_NAME` (the vault the access tokens go to), and `KITCHEN_ALERT_NTFY_TOPIC`
+ * (a Key Vault reference).
  */
 export function bankServices(env: Record<string, string | undefined> = process.env): BankServices {
   let plaid: PlaidClient | undefined;

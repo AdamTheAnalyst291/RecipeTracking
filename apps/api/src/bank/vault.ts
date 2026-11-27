@@ -2,8 +2,10 @@ import { DefaultAzureCredential } from "@azure/identity";
 import { SecretClient } from "@azure/keyvault-secrets";
 
 /**
- * Where Plaid access tokens live: Key Vault, written and read with the Functions app's managed
- * identity (locally, `az login`). Never the database, a log or a response (ADR-27).
+ * Where Plaid access tokens live: the environment's token vault, a Key Vault holding nothing
+ * else, written and read with the Functions app's managed identity (locally, `az login`).
+ * Never the database, a log or a response (ADR-27). The API can write only there; the main
+ * vault (household members, Plaid keys) stays read-only to it.
  */
 export interface TokenVault {
   save(name: string, value: string): Promise<void>;
@@ -24,17 +26,17 @@ export function accessTokenSecretName(plaidItemId: string): string {
 
 const CHECK_SECRET = "plaid-vault-write-check";
 
-/** The environment's Key Vault, from `KITCHEN_KEY_VAULT_URI`. */
+/** The token vault's address, from `KITCHEN_TOKEN_VAULT_NAME`. */
+export function tokenVaultUri(env: Record<string, string | undefined>): string {
+  const name = env.KITCHEN_TOKEN_VAULT_NAME?.trim() ?? "";
+  if (!/^[A-Za-z][A-Za-z0-9-]{1,22}[A-Za-z0-9]$/.test(name)) throw new Error("KITCHEN_TOKEN_VAULT_NAME is not set to a Key Vault name");
+  return `https://${name}.vault.azure.net/`;
+}
+
+/** The environment's token vault. */
 export function createKeyVault(env: Record<string, string | undefined> = process.env): TokenVault {
   let client: SecretClient | undefined;
-  const secrets = () => {
-    if (!client) {
-      const uri = env.KITCHEN_KEY_VAULT_URI?.trim();
-      if (!uri) throw new Error("KITCHEN_KEY_VAULT_URI is not set");
-      client = new SecretClient(uri, new DefaultAzureCredential());
-    }
-    return client;
-  };
+  const secrets = () => (client ??= new SecretClient(tokenVaultUri(env), new DefaultAzureCredential()));
   return {
     async save(name, value) {
       await secrets().setSecret(name, value, { contentType: "Plaid access token" });
