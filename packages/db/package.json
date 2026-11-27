@@ -27,11 +27,11 @@
     "import:sample-money": "pnpm run build && node dist/import-sample-money.js"
   },
   "dependencies": {
-    "mssql": "12.7.16"
+    "mssql": "12.8.1"
   },
   "devDependencies": {
     "@types/mssql": "12.3.0",
-    "@types/node": "26.6.6"
+    "@types/node": "26.6.7"
   },
   "files": [
     "dist",

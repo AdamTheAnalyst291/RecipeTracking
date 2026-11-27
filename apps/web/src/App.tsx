@@ -6,6 +6,7 @@ import { createRecipeApi } from "./recipes/api.js";
 import { createBanksApi } from "./banks/api.js";
 import { openPlaidLink } from "./banks/plaidLink.js";
 import { createMoneyApi } from "./money/api.js";
+import { createBudgetApi } from "./money/budget-api.js";
 import { createShoppingApi } from "./shopping/api.js";
 import { Kitchen } from "./shell/Kitchen.js";
 import { startSignIn, type SignIn } from "./signIn.js";
@@ -140,6 +141,7 @@ function SignedInKitchen({
   const shopping = useMemo(() => createShoppingApi(apiUrl, getToken), [apiUrl, getToken]);
   const pantry = useMemo(() => ({ apiUrl, getToken, onSignedOut }), [apiUrl, getToken, onSignedOut]);
   const money = useMemo(() => createMoneyApi(apiUrl, getToken), [apiUrl, getToken]);
+  const budgets = useMemo(() => createBudgetApi(apiUrl, getToken), [apiUrl, getToken]);
   const banks = useMemo(() => ({ api: createBanksApi(apiUrl, getToken), openLink: openPlaidLink }), [apiUrl, getToken]);
-  return <Kitchen mealPlan={mealPlan} recipes={recipes} shopping={shopping} pantry={pantry} money={money} banks={banks} account={account} />;
+  return <Kitchen mealPlan={mealPlan} recipes={recipes} shopping={shopping} pantry={pantry} money={money} budgets={budgets} banks={banks} account={account} />;
 }

@@ -7,6 +7,7 @@ import { inMemoryMealPlanApi } from "../mealPlan/test-api.js";
 import { inMemoryRecipeApi } from "../recipes/test-api.js";
 import { inMemoryBanksApi } from "../banks/test-api.js";
 import { inMemoryMoneyApi } from "../money/test-api.js";
+import { inMemoryBudgetApi } from "../money/test-budget-api.js";
 import { inMemoryShoppingApi } from "../shopping/test-api.js";
 import { Kitchen } from "./Kitchen.js";
 
@@ -43,6 +44,7 @@ function open({ meals = planned(), mealPlan = inMemoryMealPlanApi(meals), today 
       shopping={inMemoryShoppingApi()}
       money={inMemoryMoneyApi()}
       banks={{ api: inMemoryBanksApi(), openLink: async () => null }}
+      budgets={inMemoryBudgetApi()}
       pantry={{ apiUrl: "https://api.example.net", getToken: async () => "token", onSignedOut: () => {} }}
       account={<p>Signed in as Test User</p>}
       today={today ?? undefined}

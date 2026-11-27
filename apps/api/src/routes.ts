@@ -1,7 +1,7 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
 import { withAuth, type AuthenticatedHandler } from "./auth.js";
 import { bankServices } from "./bank/services.js";
-import { bankAccess, cookingAccess, mealPlanAccess, moneyAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
+import { bankAccess, budgetAccess, cookingAccess, mealPlanAccess, moneyAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
 import { createCookingHandler } from "./functions/cooking.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
@@ -10,6 +10,7 @@ import { createRecipeImportHandler } from "./functions/recipeImport.js";
 import { createRecipeHandlers } from "./functions/recipes.js";
 import { createPageFetcher } from "./recipes/import/fetchPage.js";
 import { createShoppingListHandlers } from "./functions/shoppingList.js";
+import { createBudgetHandlers } from "./functions/budgets.js";
 import { createMoneyHandlers } from "./functions/money.js";
 import { createBankHandlers } from "./functions/banks.js";
 
@@ -24,6 +25,7 @@ import { createMealPlanHandlers } from "./functions/mealPlan.js";
 const mealPlan = createMealPlanHandlers(mealPlanAccess);
 const shopping = createShoppingListHandlers(shoppingListAccess);
 const money = createMoneyHandlers(moneyAccess);
+const budgets = createBudgetHandlers(budgetAccess);
 const banks = createBankHandlers(bankAccess, bankServices());
 
 interface RouteBase {
@@ -68,6 +70,9 @@ const specs: RouteSpec[] = [
   { name: "moneyRule", route: "money/rules/{id}", methods: ["PUT", "DELETE"], access: "household", handler: money.rule },
   { name: "moneyRuleOrder", route: "money/rule-order", methods: ["PUT"], access: "household", handler: money.ruleOrder },
   { name: "moneyApplyRules", route: "money/apply-rules", methods: ["POST"], access: "household", handler: money.applyRules },
+  // Monthly category budgets (card $3, ADR-27).
+  { name: "moneyBudgets", route: "money/budgets", methods: ["GET"], access: "household", handler: budgets.budgets },
+  { name: "moneyBudget", route: "money/budgets/{id}", methods: ["PUT"], access: "household", handler: budgets.budget },
   // Banks through Plaid (card $2). The access token stays in Key Vault; no route returns it.
   { name: "moneyBanks", route: "money/banks", methods: ["GET", "POST"], access: "household", handler: banks.banks },
   { name: "moneyBankLinkToken", route: "money/bank-link-token", methods: ["POST"], access: "household", handler: banks.linkToken },
