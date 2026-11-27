@@ -301,7 +301,7 @@ bacpac=$(cygpath -w ~/restore.bacpac 2>/dev/null || echo ~/restore.bacpac)   # G
 
 # 1. Give yourself read access to the exports. An Owner can't read blobs without a data role.
 #    The role can take up to about 10 minutes to apply. If step 2 says you lack the
-#    "required permissions", wait a minute and retry.
+#    "required permissions", wait a few minutes and retry.
 container_id="$(az storage account show -g $rg -n "$acct" --query id -o tsv)/blobServices/default/containers/database-exports"
 az role assignment create --role "Storage Blob Data Reader" --assignee-object-id "$me" --assignee-principal-type User --scope "$container_id"
 
@@ -374,7 +374,7 @@ dotnet tool run sqlpackage /Action:Export /SourceServerName:"$scratch.database.w
   /AccessToken:"$token" /TargetFile:"$bacpac"
 ```
 
-Delete the scratch server when you're done.
+Delete the scratch server and `~/restore.bacpac` when you're done.
 
 ### Putting a backup back into Prod
 
