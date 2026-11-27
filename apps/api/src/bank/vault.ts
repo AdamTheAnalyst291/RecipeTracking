@@ -34,7 +34,7 @@ export function tokenVaultUri(env: Record<string, string | undefined>): string {
 }
 
 /** The environment's token vault. */
-export function createKeyVault(env: Record<string, string | undefined> = process.env): TokenVault {
+export function createTokenVault(env: Record<string, string | undefined> = process.env): TokenVault {
   let client: SecretClient | undefined;
   const secrets = () => (client ??= new SecretClient(tokenVaultUri(env), new DefaultAzureCredential()));
   return {

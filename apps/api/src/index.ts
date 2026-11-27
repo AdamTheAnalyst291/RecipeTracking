@@ -1,5 +1,6 @@
 import { app } from "@azure/functions";
 import { syncBanks } from "./bank/sync.js";
+import { errorText, functionLog } from "./bank/log.js";
 import { bankServices } from "./bank/services.js";
 import { banksForJobs, pantryForJobs } from "./database.js";
 import { runPantrySnapshot } from "./functions/pantry.js";
@@ -25,7 +26,7 @@ app.timer("pantrySnapshot", {
 // /transactions/sync (card $2, ADR-27). A failure is saved on the bank and sends one phone
 // alert through ntfy; the cursor only moves after a bank's rows are saved, so the next run
 // picks up whatever this one missed. Running it again is safe: Plaid's ids prevent duplicates.
-const banks = bankServices();
+const services = bankServices();
 app.timer("bankSync", {
   schedule: "0 0 11 * * *",
   runOnStartup: false,
@@ -35,14 +36,14 @@ app.timer("bankSync", {
       stores = await banksForJobs();
     } catch (error) {
       // No database means no sync at all, which is worth a phone alert too.
-      context.error(`Bank sync couldn't reach the database: ${error instanceof Error ? error.message : String(error)}`);
-      await banks.alert("Kitchen bank sync failed", "Couldn't reach the database; nothing was synced.").catch((e: unknown) => context.error(`Bank sync couldn't send the phone alert: ${String(e)}`));
+      context.error(`Bank sync couldn't reach the database: ${errorText(error)}`);
+      await services.alert("Kitchen bank sync failed", "Couldn't reach the database; nothing was synced.").catch((e: unknown) => context.error(`Bank sync couldn't send the phone alert: ${errorText(e)}`));
       throw error;
     }
     const summary = await syncBanks({
       ...stores,
-      ...banks,
-      log: { info: (m) => context.log(m), error: (m, e) => context.error(e === undefined ? m : `${m}: ${String(e)}`) },
+      ...services,
+      log: functionLog(context),
     });
     context.log(`Bank sync: ${summary.banks} bank(s), ${summary.failed} failed, ${summary.added} new, ${summary.updated} updated, ${summary.withdrawn} withdrawn`);
   },

@@ -136,7 +136,7 @@ describe("Plaid Link", () => {
     expect(plaid.exchangePublicToken).toHaveBeenCalledWith("public-sandbox-1");
     expect(vault.save).toHaveBeenCalledWith("plaid-access-token-item-sandbox-1", ACCESS);
     expect(money.importPlaid).toHaveBeenCalledWith(HOUSEHOLD, { accounts: [{ account_id: "sbx-acc-checking", name: "Plaid Checking", mask: "0000" }], transactions: [] });
-    expect(banks.addItem).toHaveBeenCalledWith(HOUSEHOLD, {
+    expect(banks.addItem).toHaveBeenLastCalledWith(HOUSEHOLD, {
       plaidItemId: "item-sandbox-1",
       institution: "First Platypus Bank",
       accessTokenSecret: "plaid-access-token-item-sandbox-1",
@@ -144,6 +144,18 @@ describe("Plaid Link", () => {
     });
     // The token goes to the vault and nowhere else.
     expect(JSON.stringify({ res, logs, saved: banks.addItem.mock.calls, imported: money.importPlaid.mock.calls })).not.toContain(ACCESS);
+  });
+
+  it("keeps the bank even when reading its accounts fails, so the next sync can finish it", async () => {
+    const { handlers, ctx, banks } = setup({ plaid: { accounts: vi.fn(async () => Promise.reject(new PlaidApiError(500, "INTERNAL_SERVER_ERROR", "API_ERROR", "try again"))) } });
+    const res = await handlers.banks(req("POST", { body: { publicToken: "public-sandbox-1", institution: "First Platypus Bank" } }), ctx(), user);
+    expect(res.status).toBe(502);
+    expect(banks.addItem).toHaveBeenCalledWith(HOUSEHOLD, {
+      plaidItemId: "item-sandbox-1",
+      institution: "First Platypus Bank",
+      accessTokenSecret: "plaid-access-token-item-sandbox-1",
+      plaidAccountIds: [],
+    });
   });
 
   it("refuses a body without a public token", async () => {

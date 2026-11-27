@@ -14,8 +14,7 @@ export function createAlert(env: Record<string, string | undefined>, fetchFn: Fe
     // Checked here, not at start-up, so a missing topic fails the alert loudly in the log
     // without stopping the sync itself.
     if (!TOPIC.test(topic)) throw new Error("KITCHEN_ALERT_NTFY_TOPIC is not set to a topic name (letters, digits, - and _)");
-    const server = (env.KITCHEN_ALERT_NTFY_SERVER?.trim() || "https://ntfy.sh").replace(/\/+$/, "");
-    const response = await fetchFn(`${server}/${topic}`, {
+    const response = await fetchFn(`https://ntfy.sh/${topic}`, {
       method: "POST",
       headers: { Title: title, Priority: "high", Tags: "bank" },
       body: message,

@@ -1,7 +1,7 @@
 import type { BankItem, Banks, ImportReport, Money } from "@kitchen/db";
 import type { Alert } from "./alert.js";
 import { PlaidApiError, type PlaidClient } from "./plaid.js";
-import { redact } from "./redact.js";
+import { errorText, type BankLog } from "./log.js";
 import type { TokenVault } from "./vault.js";
 
 /**
@@ -18,7 +18,7 @@ export interface SyncDeps {
   plaid: () => PlaidClient;
   vault: TokenVault;
   alert: Alert;
-  log: { info(message: string): void; error(message: string, error?: unknown): void };
+  log: BankLog;
 }
 
 export interface SyncSummary {
@@ -33,7 +33,6 @@ export interface SyncSummary {
 const RECONNECT = new Set(["ITEM_LOGIN_REQUIRED", "PENDING_EXPIRATION", "PENDING_DISCONNECT", "ACCESS_NOT_GRANTED"]);
 
 const CHUNK = 5000; // money's import takes at most this many at once
-const describe = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 export async function syncBanks(deps: SyncDeps, options: { householdId?: string } = {}): Promise<SyncSummary> {
   const summary: SyncSummary = { banks: 0, failed: 0, added: 0, updated: 0, withdrawn: 0 };
@@ -43,8 +42,8 @@ export async function syncBanks(deps: SyncDeps, options: { householdId?: string 
   try {
     items = await deps.banks.itemsToSync(options.householdId);
   } catch (error) {
-    deps.log.error("Bank sync couldn't list the banks", redact(describe(error), []));
-    await sendAlert(deps, [`Couldn't start: ${redact(describe(error), [])}`]);
+    deps.log.error(`Bank sync couldn't list the banks: ${errorText(error)}`);
+    await sendAlert(deps, [`Couldn't start: ${errorText(error)}`]);
     throw error;
   }
   summary.banks = items.length;
@@ -85,13 +84,13 @@ export async function syncBanks(deps: SyncDeps, options: { householdId?: string 
     } catch (error) {
       summary.failed++;
       const code = error instanceof PlaidApiError ? error.code : null;
-      const message = redact(describe(error), [token]);
+      const message = errorText(error, [token]);
       const needsReconnect = code !== null && RECONNECT.has(code);
-      deps.log.error(`Bank sync ${name} failed`, message);
+      deps.log.error(`Bank sync ${name} failed: ${message}`);
       try {
         await deps.banks.saveRun(item.id, { ok: false, errorCode: code, needsReconnect, message });
       } catch (saveError) {
-        deps.log.error(`Bank sync ${name}: couldn't save the failed run`, redact(describe(saveError), [token]));
+        deps.log.error(`Bank sync ${name}: couldn't save the failed run: ${errorText(saveError, [token])}`);
       }
       failures.push(`${name}: ${message}${needsReconnect ? " Open Money, then Banks, and press Reconnect." : ""}`);
     }
@@ -105,6 +104,6 @@ async function sendAlert(deps: SyncDeps, lines: string[]): Promise<void> {
   try {
     await deps.alert("Kitchen bank sync failed", lines.join("\n"));
   } catch (error) {
-    deps.log.error("Bank sync couldn't send the phone alert", describe(error));
+    deps.log.error(`Bank sync couldn't send the phone alert: ${errorText(error)}`);
   }
 }

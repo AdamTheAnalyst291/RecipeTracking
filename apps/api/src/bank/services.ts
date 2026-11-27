@@ -1,7 +1,7 @@
 import type { BankServices } from "../functions/banks.js";
 import { createAlert } from "./alert.js";
 import { createPlaidClient, plaidConfigFrom, type PlaidClient } from "./plaid.js";
-import { createKeyVault } from "./vault.js";
+import { createTokenVault } from "./vault.js";
 
 /**
  * Plaid, Key Vault and the phone alert from the app settings: `PLAID_ENV` (sandbox in Dev,
@@ -13,7 +13,7 @@ export function bankServices(env: Record<string, string | undefined> = process.e
   let plaid: PlaidClient | undefined;
   return {
     plaid: () => (plaid ??= createPlaidClient(plaidConfigFrom(env))),
-    vault: createKeyVault(env),
+    vault: createTokenVault(env),
     alert: createAlert(env),
   };
 }

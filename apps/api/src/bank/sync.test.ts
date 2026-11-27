@@ -84,7 +84,7 @@ describe.skipIf(!testServer)("daily bank sync", () => {
       alert: async (title, message) => {
         alerts.push({ title, message });
       },
-      log: { info: (m) => logs.push(m), error: (m, e) => logs.push(`${m} ${e instanceof Error ? e.message : String(e ?? "")}`) },
+      log: { info: (m) => logs.push(m), error: (m) => logs.push(m) },
     };
   }
 

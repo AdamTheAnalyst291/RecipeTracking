@@ -20,8 +20,8 @@
     "mssql": "12.7.16"
   },
   "devDependencies": {
-    "@types/mssql": "12.3.0",
-    "@types/node": "26.6.6"
+    "@types/node": "26.6.6",
+    "@types/mssql": "12.3.0"
   },
   "files": [
     "dist",

@@ -4,6 +4,7 @@ import type { ApiError, BankLinkToken, BankSyncSummary, BanksResponse } from "@k
 import type { AuthenticatedHandler, SignedInUser } from "../auth.js";
 import type { Alert } from "../bank/alert.js";
 import { PlaidApiError, PlaidConfigError, type PlaidClient } from "../bank/plaid.js";
+import { errorText, functionLog } from "../bank/log.js";
 import { redact } from "../bank/redact.js";
 import { syncBanks } from "../bank/sync.js";
 import { accessTokenSecretName, type TokenVault } from "../bank/vault.js";
@@ -46,7 +47,6 @@ function bankId(value: unknown): string {
 
 const fail = (status: number, error: string): HttpResponseInit => ({ status, jsonBody: { error } satisfies ApiError });
 const STATUS = { "not-found": 404, invalid: 400, conflict: 409 } as const;
-const describe = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
  * Turns an error into an answer. Every message is redacted, and only messages are logged:
@@ -65,7 +65,7 @@ function answer(context: InvocationContext, error: unknown, secrets: string[]): 
     context.error(`Plaid refused: ${message}`);
     return fail(502, `Plaid refused: ${message}`);
   }
-  context.error(`Banks failed: ${redact(describe(error), secrets)}`);
+  context.error(`Banks failed: ${errorText(error, secrets)}`);
   return fail(503, "Banks aren't available right now. Try again shortly.");
 }
 
@@ -91,7 +91,7 @@ export function createBankHandlers(access: BankAccess, services: BankServices): 
     };
 
   return {
-    banks: route(["GET", "POST"], async (request, open, secrets) => {
+    banks: route(["GET", "POST"], async (request, open, secrets, context) => {
       if (request.method === "GET") {
         const plaid = services.plaid();
         const { banks, householdId } = await open();
@@ -109,15 +109,21 @@ export function createBankHandlers(access: BankAccess, services: BankServices): 
       const { itemId, accessToken } = await plaid.exchangePublicToken(publicToken.trim());
       secrets.push(accessToken);
       const secretName = accessTokenSecretName(itemId);
-      await services.vault.save(secretName, accessToken);
+      try {
+        await services.vault.save(secretName, accessToken);
+      } catch (error) {
+        // The connection exists at Plaid but its token couldn't be kept: say so plainly, since
+        // connecting again uses another of the Trial's slots.
+        context.error(`Connected ${institution ?? "a bank"} (Plaid item ${itemId}) but couldn't store its access token: ${errorText(error, secrets)}`);
+        throw error;
+      }
+      // Saved straight away, so whatever fails next is repaired by the next sync (which reads
+      // the accounts again) instead of leaving a connection the app doesn't know about.
+      const saved = { plaidItemId: itemId, institution, accessTokenSecret: secretName };
+      await banks.addItem(householdId, { ...saved, plaidAccountIds: [] });
       const accounts = await plaid.accounts(accessToken);
       await money.importPlaid(householdId, { accounts, transactions: [] });
-      const bank = await banks.addItem(householdId, {
-        plaidItemId: itemId,
-        institution,
-        accessTokenSecret: secretName,
-        plaidAccountIds: accounts.map((a) => a.account_id),
-      });
+      const bank = await banks.addItem(householdId, { ...saved, plaidAccountIds: accounts.map((a) => a.account_id) });
       return { status: 201, jsonBody: bank };
     }),
 
@@ -147,7 +153,7 @@ export function createBankHandlers(access: BankAccess, services: BankServices): 
           plaid: services.plaid,
           vault: services.vault,
           alert: services.alert,
-          log: { info: (m) => context.log(m), error: (m, e) => context.error(e === undefined ? m : `${m}: ${String(e)}`) },
+          log: functionLog(context),
         },
         { householdId },
       );
