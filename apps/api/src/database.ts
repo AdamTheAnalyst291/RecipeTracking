@@ -1,6 +1,7 @@
-import { connectEntra, createCooking, createMealPlan, createMoney, createPantry, createShoppingLists, resolveHousehold, type Pantry } from "@kitchen/db";
+import { connectEntra, createBudgets, createCooking, createMealPlan, createMoney, createPantry, createShoppingLists, resolveHousehold, type Pantry } from "@kitchen/db";
 import type { CookingAccess } from "./functions/cooking.js";
 import type { MealPlanAccess } from "./functions/mealPlan.js";
+import type { BudgetAccess } from "./functions/budgets.js";
 import type { MoneyAccess } from "./functions/money.js";
 import type { PantryAccess } from "./functions/pantry.js";
 import type { ShoppingListAccess } from "./functions/shoppingList.js";
@@ -71,4 +72,11 @@ export const moneyAccess: MoneyAccess = async (user) => {
   const db = await getPool();
   const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
   return { money: createMoney(db), householdId };
+};
+
+/** Monthly category budgets and spend vs budget for the signed-in member's household, against the real database. */
+export const budgetAccess: BudgetAccess = async (user) => {
+  const db = await getPool();
+  const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
+  return { budgets: createBudgets(db), householdId };
 };
