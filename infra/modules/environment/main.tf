@@ -165,8 +165,9 @@ data "azapi_resource" "api_identity" {
 
 # --- Logs --------------------------------------------------------------------
 
-# Where the API's logs go. Pay-as-you-go: the first 5 GB a month are free, and the daily
-# caps (0.1 GB, about 3 GB a month) stop ingestion before that runs out. 30 days of
+# Where the API's logs go. Pay-as-you-go: the first 5 GB a month are free across the
+# billing account, so Dev and Prod share it. The daily caps (0.05 GB, about 1.5 GB a month
+# per environment, 3 GB for both) stop ingestion before that runs out. 30 days of
 # retention is included at no charge.
 resource "azurerm_log_analytics_workspace" "this" {
   name                = "log-kitchen-${var.environment}-${local.suffix}"
@@ -174,7 +175,7 @@ resource "azurerm_log_analytics_workspace" "this" {
   location            = var.location
   sku                 = "PerGB2018"
   retention_in_days   = 30
-  daily_quota_gb      = 0.1
+  daily_quota_gb      = 0.05
   tags                = local.tags
 }
 
@@ -185,7 +186,7 @@ resource "azurerm_application_insights" "api" {
   workspace_id         = azurerm_log_analytics_workspace.this.id
   application_type     = "Node.JS"
   retention_in_days    = 30
-  daily_data_cap_in_gb = 0.1
+  daily_data_cap_in_gb = 0.05
   tags                 = local.tags
 }
 

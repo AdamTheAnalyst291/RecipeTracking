@@ -82,7 +82,7 @@ describe.skipIf(!testServer)("the API's database user", () => {
     await grantApiUser(pool, name);
     const db = await signInAsApi();
     await expect(db.request().batch("CREATE TABLE intruder (id INT)")).rejects.toThrow(/permission denied|CREATE TABLE permission/i);
-    await expect(db.request().batch("DROP TABLE plaid_withdrawn")).rejects.toThrow(/permission|does not exist/i);
+    await expect(db.request().batch("DROP TABLE plaid_withdrawn")).rejects.toThrow(/permission/i);
     const roles = await pool
       .request()
       .input("name", name)

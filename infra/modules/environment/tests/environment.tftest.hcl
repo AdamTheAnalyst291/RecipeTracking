@@ -238,12 +238,12 @@ run "api_logs_go_to_application_insights_with_a_small_daily_cap" {
   }
 
   assert {
-    condition     = azurerm_log_analytics_workspace.this.daily_quota_gb > 0 && azurerm_log_analytics_workspace.this.daily_quota_gb <= 0.15
-    error_message = "The workspace needs a daily cap that keeps a month under the 5 GB free allowance."
+    condition     = azurerm_log_analytics_workspace.this.daily_quota_gb > 0 && azurerm_log_analytics_workspace.this.daily_quota_gb <= 0.08
+    error_message = "The workspace needs a daily cap that keeps Dev and Prod together under the 5 GB a month that's free."
   }
 
   assert {
-    condition     = azurerm_application_insights.api.application_type == "Node.JS" && azurerm_application_insights.api.daily_data_cap_in_gb <= 0.15
+    condition     = azurerm_application_insights.api.application_type == "Node.JS" && azurerm_application_insights.api.daily_data_cap_in_gb <= 0.08
     error_message = "Application Insights must be the Node.js kind, with the same small daily cap."
   }
 

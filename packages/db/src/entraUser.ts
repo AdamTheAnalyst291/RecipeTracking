@@ -1,4 +1,4 @@
-import mssql from "mssql";
+import type mssql from "mssql";
 
 /** An Entra identity (an app registration or a managed identity) that signs in to the database. */
 export interface EntraIdentity {
