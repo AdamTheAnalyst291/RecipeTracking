@@ -144,14 +144,24 @@ export type AuthenticatedHandler = (
   user: SignedInUser,
 ) => Promise<HttpResponseInit>;
 
-/** Wraps a handler so it runs only for a signed-in household member. */
+/** The `WWW-Authenticate` value a route sends with a 401, when plain `Bearer` isn't enough. */
+export type Challenge = (request: HttpRequest) => string;
+
+/**
+ * Wraps a handler so it runs only for a signed-in household member. A `challenge` replaces
+ * the 401's `WWW-Authenticate` header; the MCP endpoint uses it to tell clients where to sign in.
+ */
 export function withAuth(
   handler: AuthenticatedHandler,
   getAuthenticator: () => Authenticator = defaultAuthenticator,
+  challenge?: Challenge,
 ): (request: HttpRequest, context: InvocationContext) => Promise<HttpResponseInit> {
   return async (request, context) => {
     const result = await getAuthenticator()(request);
-    if (!result.ok) return result.response;
+    if (!result.ok) {
+      if (challenge === undefined || result.response.status !== 401) return result.response;
+      return { ...result.response, headers: { "WWW-Authenticate": challenge(request) } };
+    }
     return handler(request, context, result.user);
   };
 }

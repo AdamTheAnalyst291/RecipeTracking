@@ -1,5 +1,5 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
-import { withAuth, type AuthenticatedHandler } from "./auth.js";
+import { withAuth, type AuthenticatedHandler, type Challenge } from "./auth.js";
 import { bankServices } from "./bank/services.js";
 import { bankAccess, budgetAccess, cookingAccess, mealPlanAccess, moneyAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
 import { createCookingHandler } from "./functions/cooking.js";
@@ -13,6 +13,7 @@ import { createShoppingListHandlers } from "./functions/shoppingList.js";
 import { createBudgetHandlers } from "./functions/budgets.js";
 import { createMoneyHandlers } from "./functions/money.js";
 import { createBankHandlers } from "./functions/banks.js";
+import { createMcpHandlers } from "./mcp/endpoint.js";
 
 const recipes = createRecipeHandlers(recipeStore);
 const recipeImport = createRecipeImportHandler(recipeStore, createPageFetcher());
@@ -27,6 +28,7 @@ const shopping = createShoppingListHandlers(shoppingListAccess);
 const money = createMoneyHandlers(moneyAccess);
 const budgets = createBudgetHandlers(budgetAccess);
 const banks = createBankHandlers(bankAccess, bankServices());
+const mcp = createMcpHandlers({ recipes: recipeStore, mealPlan: mealPlanAccess, pantry: pantryAccess, shopping: shoppingListAccess });
 
 interface RouteBase {
   name: string;
@@ -36,11 +38,12 @@ interface RouteBase {
 
 /**
  * Every API function. A household route is wrapped in the sign-in check here, so a new
- * function can't forget it; `public` is for the health check only (routes.test.ts holds that).
+ * function can't forget it; `public` is for the health check and the MCP endpoint's sign-in
+ * metadata only (routes.test.ts holds that). `challenge` replaces a 401's `WWW-Authenticate`.
  */
 type RouteSpec =
   | (RouteBase & { access: "public"; handler: HttpHandler })
-  | (RouteBase & { access: "household"; handler: AuthenticatedHandler });
+  | (RouteBase & { access: "household"; handler: AuthenticatedHandler; challenge?: Challenge });
 
 const specs: RouteSpec[] = [
   { name: "health", route: "health", methods: ["GET"], access: "public", handler: health },
@@ -78,8 +81,13 @@ const specs: RouteSpec[] = [
   { name: "moneyBankLinkToken", route: "money/bank-link-token", methods: ["POST"], access: "household", handler: banks.linkToken },
   { name: "moneyBankSync", route: "money/bank-sync", methods: ["POST"], access: "household", handler: banks.sync },
   { name: "moneyBankSandboxResetLogin", route: "money/banks/{id}/sandbox-reset-login", methods: ["POST"], access: "household", handler: banks.sandboxResetLogin },
+  // The MCP server for Claude (card P1, ADR-26): read tools only. GET and DELETE answer 405,
+  // as a stateless server does. Its 401 points clients at the metadata below.
+  { name: "mcp", route: "mcp", methods: ["POST", "GET", "DELETE"], access: "household", handler: mcp.mcp, challenge: mcp.challenge },
+  // RFC 9728 protected resource metadata: which Entra tenant signs MCP clients in. Public by design.
+  { name: "mcpMetadata", route: ".well-known/oauth-protected-resource/mcp", methods: ["GET"], access: "public", handler: mcp.metadata },
 ];
 
 export const routes: (RouteBase & { access: RouteSpec["access"]; handler: HttpHandler })[] = specs.map((spec) =>
-  spec.access === "public" ? spec : { ...spec, handler: withAuth(spec.handler) },
+  spec.access === "public" ? spec : { ...spec, handler: withAuth(spec.handler, undefined, spec.challenge) },
 );
