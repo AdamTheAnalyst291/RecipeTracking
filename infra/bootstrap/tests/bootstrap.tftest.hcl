@@ -178,6 +178,20 @@ run "deploy_identities_may_grant_storage_blob_data_contributor_for_the_exports" 
   }
 }
 
+run "deploy_identities_may_grant_key_vault_secrets_officer_for_the_token_vault" {
+  command = plan
+
+  assert {
+    condition     = alltrue([for e in ["dev", "prod"] : strcontains(azurerm_role_assignment.deploy_role_assignments[e].condition, "b86a8fe4-44ce-4948-aee5-eccb2c155cd7")])
+    error_message = "Each deploy identity must be able to grant Key Vault Secrets Officer (the API's role on the token-only vault, card $2)."
+  }
+
+  assert {
+    condition     = alltrue([for e in ["dev", "prod"] : !strcontains(azurerm_role_assignment.deploy_role_assignments[e].condition, "18d7d88d-d35e-4fb5-a5c3-7773c20a72d9")])
+    error_message = "The deploy identity must never be able to grant User Access Administrator."
+  }
+}
+
 run "no_backup_identity_without_prod" {
   command = plan
 

@@ -65,12 +65,15 @@ locals {
   }
 
   # Roles the deploy identities may hand out inside their own resource group: to the
-  # API's managed identity, and to the backup identity on the export container (card S2).
-  # Nothing else, so a deploy identity can't make itself Owner.
+  # API's managed identity, to the backup identity on the export container (card S2),
+  # and Key Vault Secrets Officer for the API's identity on the token-only vault, where
+  # the API writes bank tokens (card $2, PR #54). Nothing else, so a deploy identity
+  # can't make itself Owner.
   delegable_role_ids = [
     "b7e6dc6d-f1e8-4753-8033-0f276bb0955b", # Storage Blob Data Owner
     "4633458b-17de-408a-b874-0445c86b69e6", # Key Vault Secrets User
     "ba92f5b4-2d11-453d-a403-e96b0029c9fe", # Storage Blob Data Contributor
+    "b86a8fe4-44ce-4948-aee5-eccb2c155cd7", # Key Vault Secrets Officer
   ]
 
   # Environments whose database is exported weekly (card S2). Each gets a backup
