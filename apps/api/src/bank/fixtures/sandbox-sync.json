@@ -1,0 +1,52 @@
+{
+  "_note": "Made up, shaped like Plaid Sandbox's /transactions/sync answers for First Platypus Bank (user_good). Amounts in dollars, positive is money leaving the account. 'first' is the sync with no cursor, 'incremental' the next day's from cursor-1. No test calls Plaid.",
+  "first": [
+    {
+      "accounts": [
+        { "account_id": "sbx-acc-checking", "name": "Plaid Checking", "mask": "0000", "type": "depository", "subtype": "checking" },
+        { "account_id": "sbx-acc-saving", "name": "Plaid Saving", "mask": "1111", "type": "depository", "subtype": "savings" }
+      ],
+      "added": [
+        { "transaction_id": "sbx-tx-grocer", "account_id": "sbx-acc-checking", "date": "2026-11-20", "amount": 64.12, "name": "SAMPLE GROCER 0042", "merchant_name": "Sample Grocer", "original_description": "SAMPLE GROCER 0042 ANYTOWN", "pending": false },
+        { "transaction_id": "sbx-tx-coffee", "account_id": "sbx-acc-checking", "date": "2026-11-21", "amount": 4.33, "name": "Starbucks", "merchant_name": "Starbucks", "original_description": null, "pending": false },
+        { "transaction_id": "sbx-tx-pay", "account_id": "sbx-acc-checking", "date": "2026-11-21", "amount": -2500, "name": "PAYROLL EXAMPLE CO", "merchant_name": null, "original_description": "PAYROLL EXAMPLE CO DIRECT DEP", "pending": false }
+      ],
+      "modified": [],
+      "removed": [],
+      "next_cursor": "cursor-0a",
+      "has_more": true
+    },
+    {
+      "accounts": [],
+      "added": [
+        { "transaction_id": "sbx-tx-climbing", "account_id": "sbx-acc-saving", "date": "2026-11-22", "amount": 78.5, "name": "Touchstone Climbing", "merchant_name": "Touchstone", "original_description": null, "pending": false },
+        { "transaction_id": "sbx-tx-pending-market", "account_id": "sbx-acc-checking", "date": "2026-11-23", "amount": 23.15, "name": "FRESHMART 0042", "merchant_name": null, "original_description": "FRESHMART 0042 MAIN ST", "pending": true }
+      ],
+      "modified": [],
+      "removed": [],
+      "next_cursor": "cursor-1",
+      "has_more": false
+    }
+  ],
+  "incremental": [
+    {
+      "accounts": [
+        { "account_id": "sbx-acc-checking", "name": "Plaid Checking", "mask": "0000", "type": "depository", "subtype": "checking" },
+        { "account_id": "sbx-acc-saving", "name": "Plaid Saving", "mask": "1111", "type": "depository", "subtype": "savings" }
+      ],
+      "added": [
+        { "transaction_id": "sbx-tx-market-posted", "account_id": "sbx-acc-checking", "date": "2026-11-24", "amount": 23.15, "name": "FRESHMART 0042", "merchant_name": null, "original_description": "FRESHMART 0042 MAIN ST", "pending": false },
+        { "transaction_id": "sbx-tx-bakery", "account_id": "sbx-acc-checking", "date": "2026-11-24", "amount": 12.5, "name": "CORNER BAKERY CAFE", "merchant_name": "Corner Bakery", "original_description": "CORNER BAKERY CAFE", "pending": false }
+      ],
+      "modified": [
+        { "transaction_id": "sbx-tx-grocer", "account_id": "sbx-acc-checking", "date": "2026-11-20", "amount": 66.12, "name": "SAMPLE GROCER 0042", "merchant_name": "Sample Grocer", "original_description": "SAMPLE GROCER 0042 ANYTOWN", "pending": false }
+      ],
+      "removed": [
+        { "transaction_id": "sbx-tx-pending-market", "account_id": "sbx-acc-checking" },
+        { "transaction_id": "sbx-tx-coffee", "account_id": "sbx-acc-checking" }
+      ],
+      "next_cursor": "cursor-2",
+      "has_more": false
+    }
+  ]
+}

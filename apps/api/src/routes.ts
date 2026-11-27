@@ -1,6 +1,7 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
 import { withAuth, type AuthenticatedHandler } from "./auth.js";
-import { cookingAccess, mealPlanAccess, moneyAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
+import { bankServices } from "./bank/services.js";
+import { bankAccess, cookingAccess, mealPlanAccess, moneyAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
 import { createCookingHandler } from "./functions/cooking.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
@@ -10,6 +11,7 @@ import { createRecipeHandlers } from "./functions/recipes.js";
 import { createPageFetcher } from "./recipes/import/fetchPage.js";
 import { createShoppingListHandlers } from "./functions/shoppingList.js";
 import { createMoneyHandlers } from "./functions/money.js";
+import { createBankHandlers } from "./functions/banks.js";
 
 const recipes = createRecipeHandlers(recipeStore);
 const recipeImport = createRecipeImportHandler(recipeStore, createPageFetcher());
@@ -22,6 +24,7 @@ import { createMealPlanHandlers } from "./functions/mealPlan.js";
 const mealPlan = createMealPlanHandlers(mealPlanAccess);
 const shopping = createShoppingListHandlers(shoppingListAccess);
 const money = createMoneyHandlers(moneyAccess);
+const banks = createBankHandlers(bankAccess, bankServices());
 
 interface RouteBase {
   name: string;
@@ -65,6 +68,11 @@ const specs: RouteSpec[] = [
   { name: "moneyRule", route: "money/rules/{id}", methods: ["PUT", "DELETE"], access: "household", handler: money.rule },
   { name: "moneyRuleOrder", route: "money/rule-order", methods: ["PUT"], access: "household", handler: money.ruleOrder },
   { name: "moneyApplyRules", route: "money/apply-rules", methods: ["POST"], access: "household", handler: money.applyRules },
+  // Banks through Plaid (card $2). The access token stays in Key Vault; no route returns it.
+  { name: "moneyBanks", route: "money/banks", methods: ["GET", "POST"], access: "household", handler: banks.banks },
+  { name: "moneyBankLinkToken", route: "money/bank-link-token", methods: ["POST"], access: "household", handler: banks.linkToken },
+  { name: "moneyBankSync", route: "money/bank-sync", methods: ["POST"], access: "household", handler: banks.sync },
+  { name: "moneyBankSandboxResetLogin", route: "money/banks/{id}/sandbox-reset-login", methods: ["POST"], access: "household", handler: banks.sandboxResetLogin },
 ];
 
 export const routes: (RouteBase & { access: RouteSpec["access"]; handler: HttpHandler })[] = specs.map((spec) =>
