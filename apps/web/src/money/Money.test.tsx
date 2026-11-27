@@ -4,13 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Money } from "./Money.js";
 import { inMemoryMoneyApi } from "./test-api.js";
+import { inMemoryBudgetApi } from "./test-budget-api.js";
 
 afterEach(cleanup);
 vi.setConfig({ testTimeout: 20_000 });
 
 function open(api = inMemoryMoneyApi()) {
   const user = userEvent.setup();
-  render(<Money api={api} />);
+  render(<Money api={api} budgets={inMemoryBudgetApi()} today="2026-11-27" />);
   return { api, user };
 }
 const row = (payee: string) => screen.getByRole("listitem", { name: new RegExp(payee) });
@@ -134,5 +135,16 @@ describe("the money screen when the API is down", () => {
     open(api);
     expect((await screen.findByRole("alert")).textContent).toMatch(/isn't available/);
     expect(screen.queryByText(/No transactions yet/)).toBeNull();
+  });
+});
+
+describe("the money screen: budgets", () => {
+  it("shows this month's spend vs budget on its own tab, Groceries at the top", async () => {
+    const user = userEvent.setup();
+    render(<Money api={inMemoryMoneyApi()} budgets={inMemoryBudgetApi()} today="2026-11-27" />);
+    await user.click(screen.getByRole("tab", { name: "Budgets" }));
+    expect(await screen.findByRole("heading", { name: "November 2026" })).toBeTruthy();
+    const lines = within(screen.getByRole("list", { name: "Budgets" })).getAllByRole("listitem");
+    expect(within(lines[0]!).getByRole("heading").textContent).toBe("Groceries");
   });
 });
