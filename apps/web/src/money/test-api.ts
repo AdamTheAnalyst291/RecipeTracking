@@ -18,14 +18,14 @@ const tx = (id: string, date: string, payee: string, amountCents: number, catego
 });
 
 export const sampleCategories = (): MoneyCategory[] => [
-  { id: "c-groceries", name: "Groceries" },
-  { id: "c-household", name: "Household" },
+  { id: "c-groceries", name: "Groceries", kind: "spending" },
+  { id: "c-household", name: "Household", kind: "spending" },
 ];
 
 export const sampleTransactions = (): MoneyTransaction[] => [
   tx("t3", "2026-11-04", "Corner Bakery", -1250),
   tx("t2", "2026-11-03", "Payroll Example Co", 150000),
-  tx("t1", "2026-11-02", "Sample Grocer", -8437, { id: "c-groceries", name: "Groceries" }),
+  tx("t1", "2026-11-02", "Sample Grocer", -8437, { id: "c-groceries", name: "Groceries", kind: "spending" }),
 ];
 
 /** A money API held in memory, for the screen tests. Splits are checked the way the API checks them. */
@@ -58,9 +58,15 @@ export function inMemoryMoneyApi(): MoneyApi & { txs: MoneyTransaction[]; cats: 
     async categories() {
       return structuredClone(api.cats);
     },
-    async addCategory(name) {
-      const cat = { id: `c-new${next++}`, name: name.trim() };
+    async addCategory(name, kind = "spending") {
+      const cat: MoneyCategory = { id: `c-new${next++}`, name: name.trim(), kind };
       api.cats.push(cat);
+      return { ...cat };
+    },
+    async setCategoryKind(categoryId, kind) {
+      const cat = api.cats.find((c) => c.id === categoryId);
+      if (!cat) throw new MoneyApiError(404, "There's no such category.");
+      cat.kind = kind;
       return { ...cat };
     },
     async rules() {

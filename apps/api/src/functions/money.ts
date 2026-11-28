@@ -1,5 +1,5 @@
 import type { HttpRequest, HttpResponseInit, InvocationContext } from "@azure/functions";
-import { MoneyError, type Money, type NewRule, type SplitInput, type TransactionFilter } from "@kitchen/db";
+import { CATEGORY_KINDS, MoneyError, type CategoryChange, type CategoryKind, type Money, type NewRule, type SplitInput, type TransactionFilter } from "@kitchen/db";
 import type {
   ApiError,
   MoneyAccountsResponse,
@@ -42,6 +42,19 @@ function text(body: Record<string, unknown>, key: string): string {
   const value = body[key];
   if (typeof value !== "string" || value.trim() === "") throw new BadRequest(`${key} is required.`);
   return value;
+}
+
+function kindFrom(value: unknown): CategoryKind {
+  if (!CATEGORY_KINDS.includes(value as CategoryKind)) throw new BadRequest("kind must be spending or not-spending.");
+  return value as CategoryKind;
+}
+
+function categoryChangeFrom(body: Record<string, unknown>): CategoryChange {
+  const change: CategoryChange = {};
+  if (body.name !== undefined) change.name = text(body, "name");
+  if (body.kind !== undefined) change.kind = kindFrom(body.kind);
+  if (change.name === undefined && change.kind === undefined) throw new BadRequest("Give a name or a kind.");
+  return change;
 }
 
 function ruleFrom(body: Record<string, unknown>): NewRule {
@@ -113,16 +126,18 @@ export function createMoneyHandlers(access: MoneyAccess): Record<Names, Authenti
         const { money, householdId } = await open();
         return { status: 200, jsonBody: { categories: await money.categories(householdId) } satisfies MoneyCategoriesResponse };
       }
-      const name = text(await readObject(request), "name");
+      const body = await readObject(request);
+      const name = text(body, "name");
+      const kind = body.kind === undefined ? "spending" : kindFrom(body.kind);
       const { money, householdId } = await open();
-      return { status: 201, jsonBody: await money.addCategory(householdId, name) };
+      return { status: 201, jsonBody: await money.addCategory(householdId, name, kind) };
     }),
 
     category: route(["PATCH"], async (request, open) => {
       const categoryId = idParam(request, "category");
-      const name = text(await readObject(request), "name");
+      const change = categoryChangeFrom(await readObject(request));
       const { money, householdId } = await open();
-      return { status: 200, jsonBody: await money.renameCategory(householdId, categoryId, name) };
+      return { status: 200, jsonBody: await money.updateCategory(householdId, categoryId, change) };
     }),
 
     transactions: route(["GET"], async (request, open) => {

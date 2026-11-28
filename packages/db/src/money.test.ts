@@ -114,6 +114,36 @@ describe.skipIf(!testServer)("money: transactions, categories, splits and rules"
       expect((await money.categories(await newHousehold())).length).toBe(0);
     });
 
+    it("gives a category a kind: spending by default, or not spending for transfers and income", async () => {
+      const h = await newHousehold();
+      const groceries = await money.addCategory(h, "Groceries");
+      const pay = await money.addCategory(h, "Pay", "not-spending");
+      expect(groceries.kind).toBe("spending");
+      expect(pay.kind).toBe("not-spending");
+
+      const transfers = await money.addCategory(h, "Transfers");
+      expect(await money.updateCategory(h, transfers.id, { kind: "not-spending" })).toEqual({ id: transfers.id, name: "Transfers", kind: "not-spending" });
+      expect(await money.updateCategory(h, transfers.id, { name: "Moving money" })).toMatchObject({ name: "Moving money", kind: "not-spending" });
+      expect(await money.updateCategory(h, pay.id, { name: "Salary", kind: "spending" })).toMatchObject({ name: "Salary", kind: "spending" });
+      expect(await money.renameCategory(h, groceries.id, "Food")).toMatchObject({ name: "Food", kind: "spending" });
+      expect((await money.categories(h)).map((c) => `${c.name} ${c.kind}`)).toEqual(["Food spending", "Moving money not-spending", "Salary spending"]);
+    });
+
+    it("refuses an unknown kind, an empty change, a clashing name, and another household's category", async () => {
+      const h = await newHousehold();
+      const other = await newHousehold();
+      const mine = await money.addCategory(h, "Mine");
+      await money.addCategory(h, "Also mine");
+      const theirs = await money.addCategory(other, "Theirs");
+      expect((await rejection(money.addCategory(h, "Odd", "income" as never))).code).toBe("invalid");
+      expect((await rejection(money.updateCategory(h, mine.id, { kind: "income" as never }))).code).toBe("invalid");
+      expect((await rejection(money.updateCategory(h, mine.id, {}))).code).toBe("invalid");
+      expect((await rejection(money.updateCategory(h, mine.id, { name: "also mine", kind: "not-spending" }))).code).toBe("conflict");
+      expect((await rejection(money.updateCategory(h, theirs.id, { kind: "not-spending" }))).code).toBe("not-found");
+      expect(await money.categories(h)).toEqual([expect.objectContaining({ name: "Also mine", kind: "spending" }), expect.objectContaining({ name: "Mine", kind: "spending" })]);
+      expect((await money.categories(other))[0]).toMatchObject({ kind: "spending" });
+    });
+
     it("sets a category by hand, changes it and clears it", async () => {
       const h = await newHousehold();
       await money.importPlaid(h, sample());

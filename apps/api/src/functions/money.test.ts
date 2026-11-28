@@ -31,9 +31,10 @@ const rule: Rule = { id: RULE, position: 1, field: "payee", match: "contains", p
 function fake(overrides: Partial<Record<keyof Money, unknown>> = {}) {
   const money = {
     accounts: vi.fn(async () => [{ id: tx.accountId, name: "Everyday Checking", mask: "0000" }]),
-    categories: vi.fn(async () => [{ id: CAT, name: "Groceries" }]),
-    addCategory: vi.fn(async (_h: string, name: string) => ({ id: CAT, name })),
-    renameCategory: vi.fn(async (_h: string, id: string, name: string) => ({ id, name })),
+    categories: vi.fn(async () => [{ id: CAT, name: "Groceries", kind: "spending" }]),
+    addCategory: vi.fn(async (_h: string, name: string, kind = "spending") => ({ id: CAT, name, kind })),
+    renameCategory: vi.fn(async (_h: string, id: string, name: string) => ({ id, name, kind: "spending" })),
+    updateCategory: vi.fn(async (_h: string, id: string, change: { name?: string; kind?: string }) => ({ id, name: "Groceries", kind: "spending", ...change })),
     transactions: vi.fn(async () => [tx]),
     setCategory: vi.fn(async () => tx),
     setSplits: vi.fn(async () => tx),
@@ -130,20 +131,43 @@ describe("money categories and accounts", () => {
   it("lists accounts and categories", async () => {
     const { handlers } = fake();
     expect((await handlers.accounts(req("GET"), ctx(), user)).jsonBody).toEqual({ accounts: [{ id: tx.accountId, name: "Everyday Checking", mask: "0000" }] });
-    expect((await handlers.categories(req("GET"), ctx(), user)).jsonBody).toEqual({ categories: [{ id: CAT, name: "Groceries" }] });
+    expect((await handlers.categories(req("GET"), ctx(), user)).jsonBody).toEqual({ categories: [{ id: CAT, name: "Groceries", kind: "spending" }] });
   });
 
   it("adds and renames a category; a duplicate name is a 409", async () => {
     const { money, handlers } = fake();
     const added = await handlers.categories(req("POST", { body: { name: "Household" } }), ctx(), user);
     expect(added.status).toBe(201);
-    expect(money.addCategory).toHaveBeenCalledWith(HOUSEHOLD, "Household");
+    expect(money.addCategory).toHaveBeenCalledWith(HOUSEHOLD, "Household", "spending");
     await handlers.category(req("PATCH", { params: { id: CAT }, body: { name: "Food" } }), ctx(), user);
-    expect(money.renameCategory).toHaveBeenCalledWith(HOUSEHOLD, CAT, "Food");
+    expect(money.updateCategory).toHaveBeenCalledWith(HOUSEHOLD, CAT, { name: "Food" });
     expect((await handlers.categories(req("POST", { body: {} }), ctx(), user)).status).toBe(400);
 
     const dup = fake({ addCategory: vi.fn(async () => Promise.reject(new MoneyError("conflict", "Already there"))) });
     expect((await dup.handlers.categories(req("POST", { body: { name: "Groceries" } }), ctx(), user)).status).toBe(409);
+  });
+
+  it("sets a category's kind when adding or changing it (card $6)", async () => {
+    const { money, handlers } = fake();
+    const added = await handlers.categories(req("POST", { body: { name: "Pay", kind: "not-spending" } }), ctx(), user);
+    expect(added).toMatchObject({ status: 201, jsonBody: { name: "Pay", kind: "not-spending" } });
+    expect(money.addCategory).toHaveBeenCalledWith(HOUSEHOLD, "Pay", "not-spending");
+
+    const changed = await handlers.category(req("PATCH", { params: { id: CAT }, body: { kind: "not-spending" } }), ctx(), user);
+    expect(changed).toMatchObject({ status: 200, jsonBody: { id: CAT, kind: "not-spending" } });
+    expect(money.updateCategory).toHaveBeenCalledWith(HOUSEHOLD, CAT, { kind: "not-spending" });
+    await handlers.category(req("PATCH", { params: { id: CAT }, body: { name: "Wages", kind: "not-spending" } }), ctx(), user);
+    expect(money.updateCategory).toHaveBeenLastCalledWith(HOUSEHOLD, CAT, { name: "Wages", kind: "not-spending" });
+  });
+
+  it("refuses an unknown kind or a change with neither name nor kind", async () => {
+    const { money, handlers } = fake();
+    expect((await handlers.categories(req("POST", { body: { name: "Pay", kind: "income" } }), ctx(), user)).status).toBe(400);
+    expect((await handlers.category(req("PATCH", { params: { id: CAT }, body: { kind: "income" } }), ctx(), user)).status).toBe(400);
+    expect((await handlers.category(req("PATCH", { params: { id: CAT }, body: {} }), ctx(), user)).status).toBe(400);
+    expect((await handlers.category(req("PATCH", { params: { id: CAT }, body: { name: " " } }), ctx(), user)).status).toBe(400);
+    expect(money.addCategory).not.toHaveBeenCalled();
+    expect(money.updateCategory).not.toHaveBeenCalled();
   });
 });
 

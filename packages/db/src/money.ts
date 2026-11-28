@@ -18,9 +18,23 @@ export interface MoneyAccount {
   mask: string | null;
 }
 
+/**
+ * `spending` counts towards spend vs budget; `not-spending` is for transfers, pay and other
+ * income, which budgets leave out entirely (card $6).
+ */
+export type CategoryKind = "spending" | "not-spending";
+export const CATEGORY_KINDS: readonly CategoryKind[] = ["spending", "not-spending"];
+
 export interface Category {
   id: string;
   name: string;
+  kind: CategoryKind;
+}
+
+/** What to change on a category; at least one of the two. */
+export interface CategoryChange {
+  name?: string;
+  kind?: CategoryKind;
 }
 
 export interface Split {
@@ -93,8 +107,11 @@ export interface TransactionFilter {
 export interface Money {
   accounts(householdId: string): Promise<MoneyAccount[]>;
   categories(householdId: string): Promise<Category[]>;
-  addCategory(householdId: string, name: string): Promise<Category>;
+  /** A new category is a spending one unless `kind` says otherwise. */
+  addCategory(householdId: string, name: string, kind?: CategoryKind): Promise<Category>;
   renameCategory(householdId: string, categoryId: string, name: string): Promise<Category>;
+  /** Renames a category, changes its kind, or both. */
+  updateCategory(householdId: string, categoryId: string, change: CategoryChange): Promise<Category>;
 
   /** Newest first. */
   transactions(householdId: string, filter?: TransactionFilter): Promise<Transaction[]>;
@@ -134,6 +151,13 @@ function cleanName(name: unknown, what: string, max: number): string {
   if (value.length > max) throw new MoneyError("invalid", `${what} can be at most ${max} characters.`);
   return value;
 }
+
+function checkKind(kind: unknown): CategoryKind {
+  if (!CATEGORY_KINDS.includes(kind as CategoryKind)) throw new MoneyError("invalid", "A category's kind is spending or not-spending.");
+  return kind as CategoryKind;
+}
+
+const toCategory = (row: Category): Category => ({ id: id(row.id), name: row.name, kind: row.kind });
 
 function checkRule(rule: NewRule): NewRule {
   if (rule.field !== "payee" && rule.field !== "description") throw new MoneyError("invalid", "A rule looks at the payee or the description.");
@@ -338,6 +362,27 @@ export function createMoney(pool: mssql.ConnectionPool): Money {
         IF @@ROWCOUNT = 0 INSERT money_account (household_id, name, mask, plaid_account_id) VALUES (@h, @n, @m, @p);`);
   }
 
+  async function updateCategory(householdId: string, categoryId: string, change: CategoryChange): Promise<Category> {
+    if (change.name === undefined && change.kind === undefined) throw new MoneyError("invalid", "Give a new name or kind for the category.");
+    const clean = change.name === undefined ? null : cleanName(change.name, "A category name", MAX_NAME);
+    const kind = change.kind === undefined ? null : checkKind(change.kind);
+    const write = async () => {
+      const r = await onPool()
+        .input("h", GUID, householdId)
+        .input("c", GUID, categoryId)
+        .input("n", mssql.NVarChar(MAX_NAME), clean)
+        .input("k", mssql.VarChar(20), kind)
+        .query(
+          `UPDATE money_category SET name = COALESCE(@n, name), kind = COALESCE(@k, kind)
+           OUTPUT inserted.id, inserted.name, inserted.kind WHERE id = @c AND household_id = @h`,
+        );
+      const row = r.recordset[0] as Category | undefined;
+      if (!row) throw new MoneyError("not-found", "There's no such category.");
+      return toCategory(row);
+    };
+    return clean === null ? write() : uniqueName(clean, write);
+  }
+
   return {
     async accounts(householdId) {
       const r = await onPool().input("h", GUID, householdId).query("SELECT id, name, mask FROM money_account WHERE household_id = @h ORDER BY name, id");
@@ -345,35 +390,26 @@ export function createMoney(pool: mssql.ConnectionPool): Money {
     },
 
     async categories(householdId) {
-      const r = await onPool().input("h", GUID, householdId).query("SELECT id, name FROM money_category WHERE household_id = @h ORDER BY name, id");
-      return (r.recordset as Category[]).map((c) => ({ id: id(c.id), name: c.name }));
+      const r = await onPool().input("h", GUID, householdId).query("SELECT id, name, kind FROM money_category WHERE household_id = @h ORDER BY name, id");
+      return (r.recordset as Category[]).map(toCategory);
     },
 
-    async addCategory(householdId, name) {
+    async addCategory(householdId, name, kind = "spending") {
       const clean = cleanName(name, "A category name", MAX_NAME);
+      const k = checkKind(kind);
       return uniqueName(clean, async () => {
         const r = await onPool()
           .input("h", GUID, householdId)
           .input("n", mssql.NVarChar(MAX_NAME), clean)
-          .query("INSERT money_category (household_id, name) OUTPUT inserted.id, inserted.name VALUES (@h, @n)");
-        const row = r.recordset[0] as Category;
-        return { id: id(row.id), name: row.name };
+          .input("k", mssql.VarChar(20), k)
+          .query("INSERT money_category (household_id, name, kind) OUTPUT inserted.id, inserted.name, inserted.kind VALUES (@h, @n, @k)");
+        return toCategory(r.recordset[0] as Category);
       });
     },
 
-    async renameCategory(householdId, categoryId, name) {
-      const clean = cleanName(name, "A category name", MAX_NAME);
-      return uniqueName(clean, async () => {
-        const r = await onPool()
-          .input("h", GUID, householdId)
-          .input("c", GUID, categoryId)
-          .input("n", mssql.NVarChar(MAX_NAME), clean)
-          .query("UPDATE money_category SET name = @n OUTPUT inserted.id, inserted.name WHERE id = @c AND household_id = @h");
-        const row = r.recordset[0] as Category | undefined;
-        if (!row) throw new MoneyError("not-found", "There's no such category.");
-        return { id: id(row.id), name: row.name };
-      });
-    },
+    renameCategory: (householdId, categoryId, name) => updateCategory(householdId, categoryId, { name }),
+
+    updateCategory,
 
     async transactions(householdId, filter = {}) {
       const limit = filter.limit ?? 200;

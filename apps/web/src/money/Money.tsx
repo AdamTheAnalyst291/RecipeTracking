@@ -1,4 +1,4 @@
-import type { MoneyCategory, MoneyRule, MoneyRuleField, MoneyRuleMatch, MoneySplitsChange, MoneyTransaction, NewMoneyRule } from "@kitchen/shared";
+import type { MoneyCategory, MoneyCategoryKind, MoneyRule, MoneyRuleField, MoneyRuleMatch, MoneySplitsChange, MoneyTransaction, NewMoneyRule } from "@kitchen/shared";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { MoneyApi } from "./api.js";
 import type { BudgetApi } from "./budget-api.js";
@@ -123,10 +123,16 @@ export function Money({ api, budgets, today }: Props) {
           cats={cats}
           rules={rules}
           busy={busy}
-          addCategory={(name) =>
+          addCategory={(name, kind) =>
             run(async () => {
-              const added = await api.addCategory(name);
+              const added = await api.addCategory(name, kind);
               setCats((c) => [...c, added].sort((a, b) => a.name.localeCompare(b.name)));
+            })
+          }
+          setCategoryKind={(category, kind) =>
+            run(async () => {
+              const saved = await api.setCategoryKind(category.id, kind);
+              setCats((c) => c.map((x) => (x.id === saved.id ? saved : x)));
             })
           }
           addRule={(rule) =>
@@ -327,7 +333,8 @@ function Rules(props: {
   cats: MoneyCategory[];
   rules: MoneyRule[];
   busy: boolean;
-  addCategory: (name: string) => Promise<boolean>;
+  addCategory: (name: string, kind: MoneyCategoryKind) => Promise<boolean>;
+  setCategoryKind: (category: MoneyCategory, kind: MoneyCategoryKind) => Promise<boolean>;
   addRule: (rule: NewMoneyRule) => Promise<boolean>;
   removeRule: (rule: MoneyRule) => Promise<boolean>;
   moveRule: (index: number, by: -1 | 1) => Promise<boolean>;
@@ -335,6 +342,7 @@ function Rules(props: {
 }) {
   const { cats, rules, busy } = props;
   const [category, setCategory] = useState("");
+  const [kind, setKind] = useState<MoneyCategoryKind>("spending");
   const [field, setField] = useState<MoneyRuleField>("payee");
   const [match, setMatch] = useState<MoneyRuleMatch>("contains");
   const [pattern, setPattern] = useState("");
@@ -343,7 +351,10 @@ function Rules(props: {
   const addCategory = async (event: FormEvent) => {
     event.preventDefault();
     if (category.trim() === "") return;
-    if (await props.addCategory(category)) setCategory("");
+    if (await props.addCategory(category, kind)) {
+      setCategory("");
+      setKind("spending");
+    }
   };
   const addRule = async (event: FormEvent) => {
     event.preventDefault();
@@ -416,9 +427,13 @@ function Rules(props: {
       </button>
 
       <h3>Categories</h3>
+      <p className="money-meta">Budgets count only spending categories. Mark transfers, pay and other income as not spending, so they never count as spending or as a refund.</p>
       <ul className="money-cats">
         {cats.map((c) => (
-          <li key={c.id}>{c.name}</li>
+          <li key={c.id} className="money-cat">
+            <span>{c.name}</span>
+            <KindSelect label={`Kind of ${c.name}`} value={c.kind} disabled={busy} onChange={(k) => void props.setCategoryKind(c, k)} />
+          </li>
         ))}
       </ul>
       <form className="money-form" onSubmit={(e) => void addCategory(e)}>
@@ -426,10 +441,21 @@ function Rules(props: {
           New category
           <input value={category} maxLength={100} onChange={(e) => setCategory(e.target.value)} placeholder="Groceries" />
         </label>
+        <KindSelect label="New category kind" value={kind} disabled={busy} onChange={setKind} />
         <button type="submit" disabled={busy || category.trim() === ""}>
           Add category
         </button>
       </form>
     </>
+  );
+}
+
+/** Spending or not spending (card $6); the shown value follows the saved one, so a refused change snaps back. */
+function KindSelect({ label, value, disabled, onChange }: { label: string; value: MoneyCategoryKind; disabled: boolean; onChange: (kind: MoneyCategoryKind) => void }) {
+  return (
+    <select aria-label={label} value={value} disabled={disabled} onChange={(e) => onChange(e.target.value as MoneyCategoryKind)}>
+      <option value="spending">Spending</option>
+      <option value="not-spending">Not spending</option>
+    </select>
   );
 }
