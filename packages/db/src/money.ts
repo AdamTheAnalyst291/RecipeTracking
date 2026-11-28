@@ -396,12 +396,12 @@ export function createMoney(pool: mssql.ConnectionPool): Money {
 
     async addCategory(householdId, name, kind = "spending") {
       const clean = cleanName(name, "A category name", MAX_NAME);
-      const k = checkKind(kind);
+      const checked = checkKind(kind);
       return uniqueName(clean, async () => {
         const r = await onPool()
           .input("h", GUID, householdId)
           .input("n", mssql.NVarChar(MAX_NAME), clean)
-          .input("k", mssql.VarChar(20), k)
+          .input("k", mssql.VarChar(20), checked)
           .query("INSERT money_category (household_id, name, kind) OUTPUT inserted.id, inserted.name, inserted.kind VALUES (@h, @n, @k)");
         return toCategory(r.recordset[0] as Category);
       });
