@@ -1,0 +1,21 @@
+# The kitchen warehouse (ADR-28, card W1): dbt builds the marts schema inside the app's own
+# Azure SQL database from the app's tables. See README.md.
+name: kitchen
+version: "1.0.0"
+profile: kitchen
+require-dbt-version: [">=1.12.0", "<1.13.0"]
+
+model-paths: [models]
+macro-paths: [macros]
+test-paths: [tests]
+clean-targets: [target, logs]
+
+flags:
+  send_anonymous_usage_stats: false
+
+models:
+  kitchen:
+    # Everything lands in the target schema, marts (macros/generate_schema_name.sql). The
+    # warehouse identity owns marts and can create nothing anywhere else.
+    staging:
+      +materialized: view

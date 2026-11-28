@@ -1,0 +1,141 @@
+name: Warehouse nightly
+
+# Builds the warehouse every night (ADR-28, card W1): `dbt build` turns the app's tables into
+# the marts schema of the same Azure SQL database, and the dbt tests gate it. Dev now; Prod
+# joins the matrix once its warehouse identity exists (infra/README.md, "Warehouse").
+#
+# A scheduled job can't wait for anyone's approval, so, like Backup Prod, this doesn't use
+# the dev/prod deploy environments or their identities. It runs in <env>-warehouse, which
+# allows main only and has no reviewer, as kitchen-github-<env>-warehouse. That identity
+# can read the app's tables and build only in marts (packages/db/sql/warehouse-builder.sql),
+# and read one Key Vault secret, ntfy-topic, for the failure alert. It has no other Azure role.
+#
+# Dry run: on pull requests, and from "Run workflow" with dry_run ticked. It installs the
+# pinned dbt, parses the project for the Azure target, lists what would build, and shows
+# the alert it would send, but signs in to nothing. The repository is public (ADR-30), so
+# nothing a pull request runs here gets Azure credentials.
+on:
+  schedule:
+    - cron: "40 8 * * *" # 08:40 UTC daily (02:40 in Chicago in winter)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Dry run (sign in to nothing, build nothing)
+        type: boolean
+        default: false
+  pull_request:
+    branches: [main]
+    paths:
+      - warehouse/**
+      - packages/db/sql/warehouse-builder.sql
+      - .github/actions/setup-dbt/**
+      - .github/workflows/warehouse-nightly.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.event_name == 'pull_request' && format('warehouse-pr-{0}', github.event.pull_request.number) || 'warehouse-nightly' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  dry-run:
+    name: Dry run (${{ matrix.environment }})
+    if: github.event_name == 'pull_request' || inputs.dry_run
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        environment: [dev]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-dbt
+
+      # Placeholders: parse and ls read the profile but never connect.
+      - name: Parse the project for the Azure target
+        working-directory: warehouse
+        shell: bash # -eo pipefail, so a failing dbt ls fails the step
+        env:
+          SQL_SERVER: sql-kitchen-${{ matrix.environment }}-dryrun.database.windows.net
+        run: |
+          dbt parse --profiles-dir . --target azure --no-version-check
+          echo "### Would build in marts (${{ matrix.environment }})" >> "$GITHUB_STEP_SUMMARY"
+          dbt ls --profiles-dir . --target azure --no-version-check --resource-type model --output name --quiet | sed 's/^/- /' >> "$GITHUB_STEP_SUMMARY"
+          tests=$(dbt ls --profiles-dir . --target azure --no-version-check --resource-type test --quiet | wc -l)
+          echo "$tests tests would run." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Show the alert a failure would send
+        env:
+          DRY_RUN: "true"
+          KEY_VAULT_NAME: kv-kitchen-${{ matrix.environment }}-dryrun
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash warehouse/scripts/alert.sh "Warehouse build failed (${{ matrix.environment }})" "dbt build failed, see $RUN_URL"
+
+      - run: bash warehouse/scripts/tests/alert.test.sh
+
+  build:
+    name: Build ${{ matrix.environment }}
+    if: (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)) && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: ${{ matrix.environment }}-warehouse
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        environment: [dev]
+    permissions:
+      contents: read
+      id-token: write # OIDC sign-in to Azure as kitchen-github-<env>-warehouse
+    env:
+      SQL_SERVER: ${{ vars.KITCHEN_SQL_SERVER }}
+      SQL_DATABASE: sqldb-kitchen-app
+      KEY_VAULT_NAME: ${{ vars.KITCHEN_KEY_VAULT_NAME }}
+    steps:
+      - name: Check that the warehouse build is set up
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+        run: |
+          if [ -z "$AZURE_CLIENT_ID" ] || [ -z "$AZURE_TENANT_ID" ] || [ -z "$SQL_SERVER" ] || [ -z "$KEY_VAULT_NAME" ]; then
+            echo "::error::The ${{ matrix.environment }}-warehouse GitHub Environment or its variables are missing. See infra/README.md, \"Warehouse\"."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+
+      # Signed in before anything else can fail, so the alert step below can read its topic.
+      # The identity has no role on the subscription, only on the database and one secret.
+      - uses: azure/login@v3
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          allow-no-subscriptions: true
+
+      - uses: ./.github/actions/setup-dbt
+
+      - name: dbt build
+        working-directory: warehouse
+        run: dbt build --profiles-dir . --target azure --no-version-check
+
+      - name: Summarize the run
+        if: always()
+        working-directory: warehouse
+        run: |
+          [ -f target/run_results.json ] || exit 0
+          python - >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import collections, json
+          results = json.load(open("target/run_results.json"))["results"]
+          counts = collections.Counter(r["status"] for r in results)
+          print("### dbt build (${{ matrix.environment }})")
+          print(", ".join(f"{n} {s}" for s, n in sorted(counts.items())))
+          for r in results:
+              if r["status"] not in ("success", "pass"):
+                  print(f"- {r['status']}: {r['unique_id']}")
+          PY
+
+      - name: Send a phone alert
+        if: failure()
+        env:
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash warehouse/scripts/alert.sh "Warehouse build failed (${{ matrix.environment }})" "dbt build failed, see $RUN_URL"

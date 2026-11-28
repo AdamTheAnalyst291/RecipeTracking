@@ -1,0 +1,324 @@
+version: 2
+
+# One staging view per source table: columns renamed, money also in dollars, and nothing
+# joined except the household on pantry snapshots. The marts (cards W2a, W2b) build on
+# these. The tests here gate every nightly build (ADR-28).
+#
+# `*household` repeats the household_id column defined (`&household`) on stg_users.
+
+models:
+  - name: stg_households
+    description: Households.
+    columns:
+      - name: household_id
+        data_tests: [unique, not_null]
+
+  - name: stg_users
+    description: People who sign in, without their Entra object ID.
+    columns:
+      - name: user_id
+        data_tests: [unique, not_null]
+      - &household
+        name: household_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_households')
+                field: household_id
+
+  - name: stg_units
+    description: Units of measure.
+    columns:
+      - name: unit_id
+        data_tests: [unique, not_null]
+      - name: unit_abbreviation
+        data_tests: [unique, not_null]
+      - name: unit_kind
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [mass, volume, count]
+
+  - name: stg_unit_conversions
+    description: Multiply a quantity in from_unit_id by factor to get it in to_unit_id.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [from_unit_id, to_unit_id]
+    columns:
+      - name: from_unit_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_units')
+                field: unit_id
+      - name: to_unit_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_units')
+                field: unit_id
+
+  - name: stg_foods
+    description: The shared food list.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [household_id, food_name]
+    columns:
+      - name: food_id
+        data_tests: [unique, not_null]
+      - *household
+
+  - name: stg_products
+    description: Pantry products with current stock and latest price (for one package of package_quantity units).
+    columns:
+      - name: product_id
+        data_tests: [unique, not_null]
+      - *household
+      - name: food_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_foods')
+                field: food_id
+      - name: unit_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_units')
+                field: unit_id
+
+  - name: stg_pantry_snapshots
+    description: Each product's stock and price, one row per product per day (card K4).
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [product_id, snapshot_date]
+    columns:
+      - name: product_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_products')
+                field: product_id
+      - name: snapshot_date
+        data_tests: [not_null]
+
+  - name: stg_recipes
+    description: Recipes.
+    columns:
+      - name: recipe_id
+        data_tests: [unique, not_null]
+      - *household
+
+  - name: stg_recipe_tags
+    description: Recipe tags, lower-cased.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [recipe_id, tag]
+    columns:
+      - name: recipe_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_recipes')
+                field: recipe_id
+
+  - name: stg_recipe_ingredients
+    description: A recipe's ingredients, in order.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [recipe_id, position]
+    columns:
+      - name: recipe_ingredient_id
+        data_tests: [unique, not_null]
+      - name: recipe_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_recipes')
+                field: recipe_id
+      - name: food_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_foods')
+                field: food_id
+
+  - name: stg_recipe_steps
+    description: A recipe's steps, in order.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [recipe_id, position]
+
+  - name: stg_planned_meals
+    description: Recipes planned for a day and meal.
+    columns:
+      - name: planned_meal_id
+        data_tests: [unique, not_null]
+      - *household
+      - name: meal_slot
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [breakfast, lunch, dinner, snack]
+      - name: recipe_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_recipes')
+                field: recipe_id
+
+  - name: stg_cooked_events
+    description: '"I made this" events (card K8).'
+    columns:
+      - name: cooked_event_id
+        data_tests: [unique, not_null]
+      - *household
+      - name: recipe_id
+        description: Empty when the recipe was deleted later; recipe_name keeps its name.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_recipes')
+                field: recipe_id
+
+  - name: stg_shopping_lists
+    description: Shopping lists built for a date range.
+    columns:
+      - name: shopping_list_id
+        data_tests: [unique, not_null]
+      - *household
+
+  - name: stg_shopping_list_items
+    description: Shopping list lines, from the plan or added by hand.
+    columns:
+      - name: shopping_list_item_id
+        data_tests: [unique, not_null]
+      - name: shopping_list_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_shopping_lists')
+                field: shopping_list_id
+      - name: item_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [plan, manual]
+
+  - name: stg_money_accounts
+    description: Bank accounts, without Plaid's account ID.
+    columns:
+      - name: account_id
+        data_tests: [unique, not_null]
+      - *household
+
+  - name: stg_money_categories
+    description: Spending categories, and not-spending ones (transfers, pay) that budgets leave out.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [household_id, category_name]
+    columns:
+      - name: category_id
+        data_tests: [unique, not_null]
+      - *household
+      - name: category_kind
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [spending, not-spending]
+
+  - name: stg_money_transactions
+    description: Bank transactions. Negative amounts are money out.
+    columns:
+      - name: transaction_id
+        data_tests: [unique, not_null]
+      - *household
+      - name: account_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_money_accounts')
+                field: account_id
+      - name: category_id
+        description: Empty for uncategorized and split transactions; a split's categories are in stg_money_splits.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_money_categories')
+                field: category_id
+      - name: category_source
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [rule, manual]
+
+  - name: stg_money_splits
+    description: Parts of a split transaction, one per category; they add up to the transaction.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [transaction_id, category_id]
+    columns:
+      - name: split_id
+        data_tests: [unique, not_null]
+      - name: transaction_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_money_transactions')
+                field: transaction_id
+      - name: category_id
+        data_tests:
+          - not_null
+          - relationships:
+              arguments:
+                to: ref('stg_money_categories')
+                field: category_id
+
+  - name: stg_money_rules
+    description: Rules that set a transaction's category from its payee or description.
+    columns:
+      - name: rule_id
+        data_tests: [unique, not_null]
+      - *household
+      - name: match_field
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [payee, description]
+      - name: match_type
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [equals, contains]
+
+  - name: stg_money_budgets
+    description: Monthly category budgets; amount is empty when a month's budget was cleared.
+    data_tests:
+      - unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [household_id, category_id, budget_month]
+    columns:
+      - name: budget_id
+        data_tests: [unique, not_null]
+      - *household
+      - name: category_id
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('stg_money_categories')
+                field: category_id

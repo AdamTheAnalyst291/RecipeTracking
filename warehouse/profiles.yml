@@ -1,0 +1,38 @@
+# Two targets, both building into the marts schema (ADR-28). No secret lives here: the
+# fixture password comes from the environment, and Azure signs in with the Azure CLI's
+# session (azure/login with OIDC in GitHub Actions, or `az login` on a laptop).
+kitchen:
+  target: fixture
+  outputs:
+    # A throwaway SQL Server (CI, or a container on a laptop), signed in as a login that has
+    # only the warehouse builder grants (warehouse/scripts/fixture-build.sh).
+    fixture:
+      type: sqlserver
+      driver: "{{ env_var('SQL_ODBC_DRIVER', 'ODBC Driver 18 for SQL Server') }}"
+      server: "{{ env_var('SQL_SERVER') }}"
+      port: "{{ env_var('SQL_PORT', '1433') | int }}"
+      database: "{{ env_var('SQL_DATABASE') }}"
+      schema: marts
+      authentication: sql
+      user: "{{ env_var('SQL_USER') }}"
+      password: "{{ env_var('DBT_ENV_SECRET_SQL_PASSWORD') }}"
+      encrypt: true
+      trust_cert: true
+      threads: 4
+
+    # The app's database in Azure SQL, as the warehouse identity (kitchen-github-<env>-warehouse).
+    # The free-tier database pauses itself and takes about a minute to wake, so the first
+    # sign-in gets a long timeout and a few retries.
+    azure:
+      type: sqlserver
+      driver: "{{ env_var('SQL_ODBC_DRIVER', 'ODBC Driver 18 for SQL Server') }}"
+      server: "{{ env_var('SQL_SERVER') }}"
+      port: 1433
+      database: "{{ env_var('SQL_DATABASE', 'sqldb-kitchen-app') }}"
+      schema: marts
+      authentication: cli
+      encrypt: true
+      trust_cert: false
+      login_timeout: 90
+      retries: 4
+      threads: 2

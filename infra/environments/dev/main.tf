@@ -53,6 +53,12 @@ variable "auth_client_id" {
   default     = ""
 }
 
+variable "warehouse_identity_object_id" {
+  description = "Object ID of the warehouse identity's service principal (GitHub variable AZURE_WAREHOUSE_PRINCIPAL_ID on the dev environment). Empty until infra/bootstrap creates it."
+  type        = string
+  default     = ""
+}
+
 module "environment" {
   source = "../../modules/environment"
 
@@ -69,6 +75,9 @@ module "environment" {
 
   # The bank sync's Plaid (card $2): the Sandbox keys are in this environment's vault.
   plaid_environment = "sandbox"
+
+  # The nightly dbt build's identity (card W1) reads the ntfy topic for its failure alert.
+  warehouse_identity_object_id = var.warehouse_identity_object_id
 }
 
 output "web_url" {

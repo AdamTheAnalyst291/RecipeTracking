@@ -1,0 +1,58 @@
+version: 2
+
+# The kitchen app's own tables are the warehouse's sources (ADR-28). They live in dbo of
+# the same database; the migrations in packages/db/migrations define them. Left out on
+# purpose: schema_migration, import_source (import bookkeeping) and the plaid_* tables (bank
+# sync bookkeeping); nothing in the marts needs them.
+sources:
+  - name: app
+    description: The kitchen app's tables, written by the API.
+    schema: dbo
+    tables:
+      - name: household
+        description: A household; every other row belongs to one.
+      - name: user
+        identifier: user
+        quoting:
+          identifier: true
+        description: A person who signs in, in one household.
+      - name: unit
+        description: Units of measure (mass, volume, count).
+      - name: unit_conversion
+        description: Factor to convert between two units of the same kind.
+      - name: food
+        description: The shared food list; recipes, pantry products and shopping list items point at it.
+      - name: product
+        description: A pantry product (a food as bought), with its current stock, staple flag and latest price.
+      - name: pantry_snapshot
+        description: >
+          One row per product per day with that day's stock and price (card K4), written by a
+          daily timer. Stock and prices change, and a missed day can't be rebuilt.
+      - name: recipe
+        description: A recipe.
+      - name: recipe_tag
+        description: Tags on a recipe.
+      - name: recipe_ingredient
+        description: A recipe's ingredients, in order.
+      - name: recipe_step
+        description: A recipe's steps, in order.
+      - name: planned_meal
+        description: A recipe planned for a day and meal.
+      - name: cooked_event
+        description: '"I made this": a recipe cooked, with the servings made (card K8).'
+      - name: shopping_list
+        description: A shopping list built for a date range.
+      - name: shopping_list_item
+        description: A line on a shopping list, from the plan or added by hand.
+      - name: money_account
+        description: A bank account.
+      - name: money_category
+        description: A spending category, or a not-spending one (transfers, pay).
+      - name: money_transaction
+        description: A bank transaction. Negative amounts are money out.
+      - name: money_split
+        description: Part of a transaction in one category; a split transaction's parts add up to it.
+      - name: money_rule
+        description: Sets a transaction's category from its payee or description.
+      - name: money_budget
+        description: A category's budget for one month.

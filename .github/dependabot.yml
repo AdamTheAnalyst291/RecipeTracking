@@ -23,6 +23,15 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+  # dbt for the warehouse (card W1): warehouse/requirements.txt, pinned with hashes.
+  # dbt-sqlserver's minor version must match dbt-core's, so they move together in one PR.
+  - package-ecosystem: "pip"
+    directory: "/warehouse"
+    schedule:
+      interval: "monthly"
+    groups:
+      warehouse:
+        patterns: ["*"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

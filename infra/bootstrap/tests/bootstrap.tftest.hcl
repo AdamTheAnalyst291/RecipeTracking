@@ -204,3 +204,42 @@ run "no_backup_identity_without_prod" {
     error_message = "Without Prod there is nothing to back up."
   }
 }
+
+# --- Warehouse identity (card W1) ------------------------------------------------
+
+run "dev_gets_a_warehouse_identity_that_trusts_only_the_dev_warehouse_environment" {
+  command = plan
+
+  assert {
+    condition     = toset(keys(azuread_application.warehouse)) == toset(["dev"])
+    error_message = "Only Dev has a warehouse identity for now; Prod joins later."
+  }
+
+  assert {
+    condition     = azuread_application.warehouse["dev"].display_name == "kitchen-github-dev-warehouse"
+    error_message = "The warehouse identity must be named kitchen-github-dev-warehouse."
+  }
+
+  assert {
+    condition     = azuread_application_federated_identity_credential.warehouse_environment["dev"].subject == "repo:AdamTheAnalyst291@225034465/RecipeTracking@1433625977:environment:dev-warehouse"
+    error_message = "The warehouse identity must trust the dev-warehouse GitHub Environment only, never dev itself."
+  }
+
+  assert {
+    condition     = azuread_application_federated_identity_credential.warehouse_environment["dev"].issuer == "https://token.actions.githubusercontent.com" && azuread_application_federated_identity_credential.warehouse_environment["dev"].audiences == tolist(["api://AzureADTokenExchange"])
+    error_message = "The warehouse identity's credential must be GitHub's OIDC issuer and audience."
+  }
+}
+
+run "no_warehouse_identity_without_dev" {
+  command = plan
+
+  variables {
+    environments = ["prod"]
+  }
+
+  assert {
+    condition     = length(azuread_application.warehouse) == 0
+    error_message = "Without Dev there is no warehouse build yet."
+  }
+}

@@ -33,3 +33,13 @@ output "backup_identities" {
     }
   }
 }
+
+output "warehouse_identities" {
+  description = "Per environment with a nightly warehouse build: the warehouse identity's client ID and service principal object ID, for the <env>-warehouse GitHub Environment and the <env> environment's AZURE_WAREHOUSE_* variables."
+  value = {
+    for e in local.warehouse_environments : e => {
+      client_id    = azuread_application.warehouse[e].client_id
+      principal_id = azuread_service_principal.warehouse[e].object_id
+    }
+  }
+}

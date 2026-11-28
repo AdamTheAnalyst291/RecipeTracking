@@ -82,6 +82,10 @@ locals {
   # identity of its own, so the scheduled job never signs in as the deploy identity.
   backup_environments = setintersection(var.environments, ["prod"])
   delegable_roles     = join(", ", local.delegable_role_ids)
+
+  # Environments whose warehouse is built nightly (card W1). Prod joins once Dev has run
+  # for a while. Each gets a warehouse identity of its own, for the same reason.
+  warehouse_environments = setintersection(var.environments, ["dev"])
 }
 
 # --- Terraform state -----------------------------------------------------------
@@ -239,6 +243,37 @@ resource "azuread_application_federated_identity_credential" "backup_environment
   description    = "GitHub Actions in ${var.github_repository}, environment ${each.key}-backup"
   issuer         = "https://token.actions.githubusercontent.com"
   subject        = "${var.github_oidc_subject_prefix}:environment:${each.key}-backup"
+  audiences      = ["api://AzureADTokenExchange"]
+}
+
+# --- Warehouse identity (card W1) -----------------------------------------------
+
+# Runs the nightly dbt build (.github/workflows/warehouse-nightly.yml, ADR-28). It signs in
+# only from the GitHub Environment <env>-warehouse, which has no required reviewer (a
+# scheduled job can't wait for one) but allows main only. Like the backup identity it gets
+# no Azure role here: the environment's Terraform lets it read the one ntfy-topic secret,
+# and the Deploy Dev migration step makes it a database user that reads the app's tables
+# and builds only in the marts schema (packages/db/sql/warehouse-builder.sql).
+resource "azuread_application" "warehouse" {
+  for_each = local.warehouse_environments
+
+  display_name = "kitchen-github-${each.key}-warehouse"
+}
+
+resource "azuread_service_principal" "warehouse" {
+  for_each = local.warehouse_environments
+
+  client_id = azuread_application.warehouse[each.key].client_id
+}
+
+resource "azuread_application_federated_identity_credential" "warehouse_environment" {
+  for_each = local.warehouse_environments
+
+  application_id = azuread_application.warehouse[each.key].id
+  display_name   = "github-${replace(var.github_repository, "/", "-")}-${each.key}-warehouse"
+  description    = "GitHub Actions in ${var.github_repository}, environment ${each.key}-warehouse"
+  issuer         = "https://token.actions.githubusercontent.com"
+  subject        = "${var.github_oidc_subject_prefix}:environment:${each.key}-warehouse"
   audiences      = ["api://AzureADTokenExchange"]
 }
 

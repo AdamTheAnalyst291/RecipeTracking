@@ -220,6 +220,19 @@ resource "azurerm_role_assignment" "api_key_vault" {
   principal_type       = "ServicePrincipal"
 }
 
+# The warehouse identity (kitchen-github-<env>-warehouse, card W1) reads the ntfy topic when
+# the nightly dbt build fails, and no other secret: the role is scoped to that one secret,
+# not the vault, which also holds the Plaid keys and household-members. Its database access
+# comes from the migration step instead (packages/db/sql/warehouse-builder.sql).
+resource "azurerm_role_assignment" "warehouse_alert_topic" {
+  count = var.warehouse_identity_object_id != "" ? 1 : 0
+
+  scope                = "${azurerm_key_vault.this.id}/secrets/ntfy-topic"
+  role_definition_name = "Key Vault Secrets User"
+  principal_id         = var.warehouse_identity_object_id
+  principal_type       = "ServicePrincipal"
+}
+
 # Holds only the Plaid access tokens the API writes when a bank is connected (card $2). It is
 # a vault of its own so the API's write access can't reach the main vault: a bug or a
 # compromise that could write there could change household-members and let anyone in.

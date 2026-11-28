@@ -91,3 +91,8 @@ output "exports_backup_identity_principal_ids" {
   description = "Who may write the database exports: the backup identity, once it exists."
   value       = [for a in azurerm_role_assignment.exports_backup_identity : a.principal_id]
 }
+
+output "warehouse_alert_topic_reader_ids" {
+  description = "Who may read the ntfy-topic secret for the warehouse build's alert: the warehouse identity, once it exists."
+  value       = [for a in azurerm_role_assignment.warehouse_alert_topic : a.principal_id]
+}
