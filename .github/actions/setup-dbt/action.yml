@@ -13,21 +13,25 @@ runs:
         cache-dependency-path: warehouse/requirements.txt
 
     # dbt-sqlserver talks to SQL Server through Microsoft's ODBC driver, which GitHub's Ubuntu
-    # 24.04 runner image doesn't ship. It comes from Microsoft's apt repository, pinned: the
-    # repository's config package by its SHA-256, the driver by exact version. Dependabot
-    # can't bump these; check https://packages.microsoft.com/ubuntu/24.04/prod/ by hand.
+    # runner images don't ship. It comes from Microsoft's apt repository for the runner's
+    # Ubuntu release, pinned: the repository's config package by its SHA-256 (one per release
+    # below), the driver by exact version. Dependabot can't bump these; check
+    # https://packages.microsoft.com/ubuntu/<release>/prod/ by hand.
     - name: Install the ODBC driver
       shell: bash
       env:
-        MS_PROD_DEB_SHA256: c13f01ac7c3001b51a9281d40dde666db5e037e05512840c319832f7852bfec4
         MSODBCSQL18_VERSION: 18.7.1.1-1
       run: |
-        if [ "$(lsb_release -rs)" != "24.04" ]; then
-          echo "::error::The ODBC driver pins are for Ubuntu 24.04; this runner is $(lsb_release -rs). Update them in .github/actions/setup-dbt."
-          exit 1
-        fi
-        curl -fsSL -o /tmp/packages-microsoft-prod.deb https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
-        echo "$MS_PROD_DEB_SHA256  /tmp/packages-microsoft-prod.deb" | sha256sum -c -
+        release="$(lsb_release -rs)"
+        case "$release" in
+          24.04) sha256=c13f01ac7c3001b51a9281d40dde666db5e037e05512840c319832f7852bfec4 ;;
+          26.04) sha256=b2e7c6b9328e0c6a68bfe5d0045be90ceb192b32e0ca906c6c529b9012726f39 ;;
+          *)
+            echo "::error::No ODBC driver pin for Ubuntu $release. Add one in .github/actions/setup-dbt."
+            exit 1 ;;
+        esac
+        curl -fsSL -o /tmp/packages-microsoft-prod.deb "https://packages.microsoft.com/config/ubuntu/$release/packages-microsoft-prod.deb"
+        echo "$sha256  /tmp/packages-microsoft-prod.deb" | sha256sum -c -
         sudo dpkg -i /tmp/packages-microsoft-prod.deb
         sudo apt-get update -q
         sudo ACCEPT_EULA=Y apt-get install -y -q --no-install-recommends "msodbcsql18=$MSODBCSQL18_VERSION"
