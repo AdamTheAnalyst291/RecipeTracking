@@ -1,4 +1,4 @@
-import { connectEntra, createBanks, createBudgets, createCooking, createMealPlan, createMoney, createPantry, createReceipts, createShoppingLists, resolveHousehold, type Pantry } from "@kitchen/db";
+import { connectEntra, createBanks, createBudgets, createCooking, createMealPlan, createMoney, createPantry, createReceiptReminders, createReceipts, createShoppingLists, resolveHousehold, type Pantry } from "@kitchen/db";
 import type { BankAccess } from "./functions/banks.js";
 import type { CookingAccess } from "./functions/cooking.js";
 import type { MealPlanAccess } from "./functions/mealPlan.js";
@@ -48,6 +48,11 @@ export const mealPlanAccess: MealPlanAccess = async (user) => {
 /** The pantry across every household, for jobs that run without anyone signed in. */
 export async function pantryForJobs(): Promise<Pantry> {
   return createPantry(await getPool());
+}
+
+/** Which weeks have had their receipt reminder, for the weekly timer. */
+export async function receiptRemindersForJobs() {
+  return createReceiptReminders(await getPool());
 }
 
 /** Recipes, against the real database. */
