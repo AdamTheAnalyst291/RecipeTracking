@@ -491,3 +491,66 @@ run "rejects_a_backup_identity_that_is_not_a_guid" {
 
   expect_failures = [var.backup_identity_object_id]
 }
+
+# --- Warehouse identity (card W1) ------------------------------------------------
+
+run "warehouse_identity_may_read_the_ntfy_topic_and_no_other_secret" {
+  command = plan
+
+  variables {
+    warehouse_identity_object_id = "00000000-0000-0000-0000-000000000008"
+  }
+
+  # The vault's ID is only known after apply; give it one so the scope can be checked.
+  override_resource {
+    target          = azurerm_key_vault.this
+    override_during = plan
+    values = {
+      id = "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-kitchen-dev/providers/Microsoft.KeyVault/vaults/kv-kitchen-dev-abc123"
+    }
+  }
+
+  assert {
+    condition     = length(azurerm_role_assignment.warehouse_alert_topic) == 1
+    error_message = "The warehouse identity needs to read the ntfy topic for its failure alert."
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.warehouse_alert_topic[0].scope == "/subscriptions/00000000-0000-0000-0000-000000000001/resourceGroups/rg-kitchen-dev/providers/Microsoft.KeyVault/vaults/kv-kitchen-dev-abc123/secrets/ntfy-topic"
+    error_message = "The warehouse identity may read the ntfy-topic secret only, never the whole vault (it holds the Plaid keys)."
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.warehouse_alert_topic[0].role_definition_name == "Key Vault Secrets User"
+    error_message = "Reading the topic needs Key Vault Secrets User and nothing more."
+  }
+
+  assert {
+    condition     = azurerm_role_assignment.warehouse_alert_topic[0].principal_id == "00000000-0000-0000-0000-000000000008" && azurerm_role_assignment.warehouse_alert_topic[0].principal_type == "ServicePrincipal"
+    error_message = "The role goes to the warehouse identity's service principal."
+  }
+
+  assert {
+    condition     = output.warehouse_alert_topic_reader_ids == ["00000000-0000-0000-0000-000000000008"]
+    error_message = "The output lists who may read the alert topic."
+  }
+}
+
+run "no_warehouse_role_until_the_warehouse_identity_exists" {
+  command = plan
+
+  assert {
+    condition     = length(azurerm_role_assignment.warehouse_alert_topic) == 0
+    error_message = "Nothing is granted while warehouse_identity_object_id is empty."
+  }
+}
+
+run "rejects_a_warehouse_identity_that_is_not_a_guid" {
+  command = plan
+
+  variables {
+    warehouse_identity_object_id = "kitchen-github-dev-warehouse"
+  }
+
+  expect_failures = [var.warehouse_identity_object_id]
+}

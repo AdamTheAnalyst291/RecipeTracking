@@ -95,7 +95,7 @@ Secrets go in the environment's Key Vault, never in git, GitHub or app settings.
 | `plaid-client-id` | Plaid client ID | Bank sync (cards $0 and $2) |
 | `plaid-secret` | Plaid secret: the **Sandbox** one in Dev's vault, the **Production** one in Prod's | Bank sync (cards $0 and $2) |
 | `household-members` | Entra object IDs of the people allowed in, comma-separated (today just yours) | Sign-in (card F4; see "Sign-in" below) |
-| `ntfy-topic` | The ntfy.sh topic the bank sync's failure alerts go to: a long random name of letters, digits, `-` and `_` (anyone who knows it can read the alerts). Subscribe to it in the ntfy phone app. | Bank sync alerts (card $2) |
+| `ntfy-topic` | The ntfy.sh topic the bank sync's failure alerts go to: a long random name of letters, digits, `-` and `_` (anyone who knows it can read the alerts). Subscribe to it in the ntfy phone app. | Bank sync alerts (card $2), and the nightly warehouse build's failure alerts (card W1) |
 
 Plaid access tokens are not on this list: the API writes one itself each time a bank is connected (`plaid-access-token-<item id>`), into a second vault that holds nothing else, `kv-kitchen-<env>-<suffix>-t` (Terraform output `token_vault_name`). The API can write there (Key Vault Secrets Officer) but only read the main vault, so nothing it does can change `household-members`. You don't add anything to the token vault.
 
@@ -419,9 +419,58 @@ Do this only if Prod's data is lost or wrong and the app must run on the restore
 
 5. When you're sure, delete `sqldb-kitchen-app-damaged`. It's free, but it uses one of the subscription's 10 free databases.
 
+## Warehouse
+
+dbt builds the `marts` schema inside each environment's app database every night (ADR-28, card W1). `warehouse/README.md` describes the project. Like the backup, it runs as an identity of its own, `kitchen-github-<env>-warehouse`, in a GitHub Environment of its own, `<env>-warehouse`. That environment has no reviewer, because a scheduled job can't wait for one, and allows `main` only. The identity can:
+
+- read every table in `dbo`, and write none of them
+- own the `marts` schema and create tables and views there, and nowhere else (`packages/db/sql/warehouse-builder.sql`, granted by the Deploy Dev migration step)
+- read the one Key Vault secret `ntfy-topic`, for the failure alert. The role is scoped to that secret, not the vault.
+
+It has no Azure role on the subscription, the resource group or the SQL server, and it can't deploy anything. Only Dev has one for now. Prod comes later: add `"prod"` to `warehouse_environments` in `infra/bootstrap/main.tf` and to the workflow's matrix, then wire Deploy Prod the way Deploy Dev is wired.
+
+### Turn it on (one time)
+
+After the W1 pull request is merged:
+
+1. **Check that `ntfy-topic` is in Dev's main vault** (see "Secrets you add by hand"). The role assignment is scoped to that secret, so Azure may refuse it if the secret doesn't exist yet.
+
+2. **Apply the bootstrap again.** This creates the warehouse identity. Run it from `infra/bootstrap`, signed in as the subscription owner:
+
+   ```bash
+   cd infra/bootstrap
+   terraform plan -out=tfplan
+   terraform apply tfplan
+   ./configure-github.sh
+   ```
+
+   The plan adds `kitchen-github-dev-warehouse`, its service principal and its federated credential. Nothing changes or is destroyed.
+
+   `configure-github.sh` then:
+   - creates the `dev-warehouse` environment, with no reviewer and `main` only
+   - sets that environment's `AZURE_CLIENT_ID` and `AZURE_TENANT_ID`
+   - sets `AZURE_WAREHOUSE_PRINCIPAL_ID` and `AZURE_WAREHOUSE_CLIENT_ID` on `dev`
+
+   In **Settings → Environments → dev-warehouse**, check that "Deployment branches and tags" shows `main` only and there are no required reviewers.
+
+3. **Run Deploy Dev** (**Actions → Deploy Dev → Run workflow** on `main`). Terraform grants the identity read access to `ntfy-topic`. The migration step creates the `kitchen-github-dev-warehouse` database user and the `marts` schema, and grants the user its rights. The log says "kitchen-github-dev-warehouse can read the app's tables and build marts."
+
+4. **Tell the build where to look.** These are names only, nothing secret:
+
+   ```bash
+   gh variable set KITCHEN_SQL_SERVER --env dev-warehouse --body "$(az sql server list -g rg-kitchen-dev --query "[0].fullyQualifiedDomainName" -o tsv)"
+   gh variable set KITCHEN_KEY_VAULT_NAME --env dev-warehouse --body "$(az keyvault list -g rg-kitchen-dev --query "[?!ends_with(name, '-t')].name | [0]" -o tsv)"
+   ```
+
+   The vault name is also the `key_vault_name` output in a Deploy Dev run's summary.
+
+5. **Run it once by hand:** **Actions → Warehouse nightly → Run workflow** on `main`. Run it once with *dry run* ticked, then once without. Neither should ask for approval. The real run's summary counts the models built and tests passed. A failed run sends its alert to the same ntfy topic as the bank sync.
+
+The build wakes the free-tier database every night and uses some of its monthly vCore allowance (ADR-28, "Consequences"). Keep an eye on it in the portal (the database, **Compute utilization**) as data grows.
+
 ## Pipeline
 
-Four workflows. All of them sign in to Azure with OIDC, as the environment's deploy identity or (Backup Prod) the backup identity, so no Azure key or secret exists in GitHub.
+Five workflows. All of them sign in to Azure with OIDC, as the environment's deploy identity or (Backup Prod, Warehouse nightly) an identity of their own, so no Azure key or secret exists in GitHub.
 
 - **`Infrastructure`** runs when a change touches `infra/` or the workflow itself.
   - Pull requests and pushes to `main`: `terraform fmt`, `validate` on every root, the bootstrap's, module's and Prod root's tests (`terraform test` with mocked providers, so no Azure sign-in), and the API deploy and export scripts' tests (fake `az`, `curl` and `sqlpackage`). Prod is never planned on a pull request.
@@ -433,7 +482,9 @@ Four workflows. All of them sign in to Azure with OIDC, as the environment's dep
 - **`Deploy Prod`** runs only when started by hand on `main`, or on a `v*` tag of a commit on `main` (see "Deploying to Prod"). It builds with the same steps as Deploy Dev (`.github/actions/build-kitchen`), waits for your approval in the `prod` environment, then applies, migrates, deploys and checks Prod with the same scripts (`infra/scripts`). It never runs on a pull request.
 - **`Backup Prod`** runs every Sunday, and when started by hand on `main`. It runs in the `prod-backup` environment as `kitchen-github-prod-backup`, with no approval, exports Prod's database and keeps the newest 8 exports (see "Backups"). It never runs on a pull request.
 
-The repository is public (ADR-30), so only jobs for branches in this repository run in the `dev` GitHub Environment, the only place the Dev deploy identity can sign in. Pull requests from forks get the Terraform checks and the build only. No pull request of any kind reaches the `prod` or `prod-backup` environment: Deploy Prod and Backup Prod have no pull request trigger, and only people with write access (and Backup Prod's schedule) can start them or push tags. No workflow uses `pull_request_target`.
+- **`Warehouse nightly`** runs every day at 08:40 UTC, and when started by hand on `main`. It runs in `dev-warehouse` as `kitchen-github-dev-warehouse`, with no approval. It runs `dbt build` against Dev's database and sends a phone alert through ntfy when the build fails (see "Warehouse"). On pull requests, and when started with *dry run* ticked, it does a dry run that signs in to nothing. The pull request workflow also runs `dbt build` against a throwaway SQL Server with fixture data.
+
+The repository is public (ADR-30), so only jobs for branches in this repository run in the `dev` GitHub Environment, the only place the Dev deploy identity can sign in. Pull requests from forks get the Terraform checks and the build only. No pull request of any kind reaches the `prod`, `prod-backup` or `dev-warehouse` environment. Deploy Prod and Backup Prod have no pull request trigger. Warehouse nightly's pull request run is the dry run, which uses no environment. Only people with write access (and the schedules) can start them or push tags. No workflow uses `pull_request_target`.
 
 The first merge with these workflows runs the first apply, which creates the Dev resources. That takes several minutes; the SQL server is the slowest part.
 

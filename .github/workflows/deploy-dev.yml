@@ -103,6 +103,8 @@ jobs:
       TF_VAR_deploy_identity_object_id: ${{ vars.AZURE_PRINCIPAL_ID }}
       # The kitchen-dev app registration (infra/README.md, "Sign-in"). Empty until it exists.
       TF_VAR_auth_client_id: ${{ vars.KITCHEN_AUTH_CLIENT_ID }}
+      # The nightly warehouse build's identity (card W1, infra/README.md "Warehouse"). Empty until it exists.
+      TF_VAR_warehouse_identity_object_id: ${{ vars.AZURE_WAREHOUSE_PRINCIPAL_ID }}
     outputs:
       static_web_app_name: ${{ steps.tf.outputs.static_web_app_name }}
       function_app_name: ${{ steps.tf.outputs.function_app_name }}
@@ -175,6 +177,9 @@ jobs:
       # The API's managed identity, made a database user after the migrations.
       API_USER_NAME: ${{ needs.apply.outputs.function_app_name }}
       API_USER_CLIENT_ID: ${{ needs.apply.outputs.function_app_client_id }}
+      # The nightly warehouse build's identity (card W1): reads the app's tables, builds marts.
+      WAREHOUSE_BUILDER_NAME: kitchen-github-dev-warehouse
+      WAREHOUSE_BUILDER_CLIENT_ID: ${{ vars.AZURE_WAREHOUSE_CLIENT_ID }}
     steps:
       - name: Check the Terraform outputs arrived
         run: |
@@ -201,7 +206,8 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      # Also makes the API's managed identity a database user that reads and writes the data.
+      # Also makes the API's managed identity a database user that reads and writes the data,
+      # and the warehouse identity one that reads the data and builds marts.
       - name: Apply the migrations
         run: pnpm --filter @kitchen/db migrate
 

@@ -1,0 +1,9 @@
+# The warehouse's direct dependencies (card W1, ADR-28). requirements.txt pins these and
+# everything they pull in, with hashes. To change a version, edit this file and run, from
+# this folder:
+#   uv pip compile requirements.in --generate-hashes --python-version 3.13 --python-platform x86_64-manylinux_2_28 -o requirements.txt
+# Dependabot (pip) bumps requirements.txt.
+dbt-core==1.12.7
+# pyodbc talks to SQL Server through Microsoft's ODBC driver; azure-identity signs in with
+# the Azure CLI's session (OIDC in GitHub Actions).
+dbt-sqlserver[pyodbc,azure]==1.12.2

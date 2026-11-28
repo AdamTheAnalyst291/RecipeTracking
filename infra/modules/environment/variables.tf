@@ -66,6 +66,17 @@ variable "database_exports" {
   default     = false
 }
 
+variable "warehouse_identity_object_id" {
+  description = "Service principal object ID of the warehouse identity (kitchen-github-<env>-warehouse), which runs the nightly dbt build (card W1) and may read the ntfy-topic secret for its failure alert. Empty until infra/bootstrap creates it; nothing is granted until then. The ntfy-topic secret must exist in the main vault first."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.warehouse_identity_object_id == "" || can(regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", var.warehouse_identity_object_id))
+    error_message = "warehouse_identity_object_id must be empty or a service principal's object ID (a lowercase GUID)."
+  }
+}
+
 variable "backup_identity_object_id" {
   description = "Service principal object ID of the backup identity (kitchen-github-<env>-backup), which may write the exports. Empty until infra/bootstrap creates it; nobody is granted the exports until then. Needs database_exports."
   type        = string

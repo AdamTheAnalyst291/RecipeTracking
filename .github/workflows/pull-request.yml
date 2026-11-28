@@ -55,3 +55,40 @@ jobs:
         env:
           TURBO_CACHE_DIR: .turbo/cache
           KITCHEN_TEST_SQL: Server=localhost,1433;User Id=sa;Password=Kitchen_Test_1!;TrustServerCertificate=true
+
+  warehouse:
+    name: dbt build against fixtures
+    runs-on: ubuntu-latest
+    # The warehouse (card W1, ADR-28): dbt builds the marts schema from the app's tables.
+    # This applies the migrations to a throwaway SQL Server, loads warehouse/fixtures, and
+    # runs `dbt build` as a login with only the warehouse builder's grants, so a model, a
+    # test or a migration that breaks the build fails here. The password is a throwaway for
+    # this container, which lives only as long as the job. Signs in to nothing.
+    services:
+      mssql:
+        image: mcr.microsoft.com/mssql/server:2022-CU20-ubuntu-22.04
+        env:
+          ACCEPT_EULA: "Y"
+          MSSQL_SA_PASSWORD: Kitchen_Test_1!
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd "/opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P 'Kitchen_Test_1!' -Q 'SELECT 1'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/setup-dbt
+
+      - name: Build and test the warehouse against the fixtures
+        env:
+          # The sqlcmd inside the SQL Server container, so the runner needs no SQL tools.
+          SQLCMD: docker exec ${{ job.services.mssql.id }} /opt/mssql-tools18/bin/sqlcmd -C -S localhost -U sa -P Kitchen_Test_1!
+          SQL_SERVER: localhost
+          SQL_PORT: "1433"
+        run: bash warehouse/scripts/fixture-build.sh
+
+      - name: Alert script tests
+        run: bash warehouse/scripts/tests/alert.test.sh

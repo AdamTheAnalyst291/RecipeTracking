@@ -1,0 +1,35 @@
+name: Set up dbt for the warehouse
+description: >-
+  Installs the Python in warehouse/.python-version, Microsoft's ODBC driver if the runner
+  lacks it, and dbt at the versions and hashes in warehouse/requirements.txt (card W1).
+  Shared by the pull request's fixture build and the nightly build. Needs a checkout first.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version-file: warehouse/.python-version
+        cache: pip
+        cache-dependency-path: warehouse/requirements.txt
+
+    # GitHub's Ubuntu runners ship ODBC Driver 18; this only installs it if an image ever doesn't.
+    - name: Check the ODBC driver
+      shell: bash
+      run: |
+        if odbcinst -q -d -n "ODBC Driver 18 for SQL Server" > /dev/null 2>&1; then
+          echo "ODBC Driver 18 for SQL Server is installed."
+        else
+          echo "Installing ODBC Driver 18 for SQL Server from packages.microsoft.com"
+          curl -fsSL -o /tmp/packages-microsoft-prod.deb "https://packages.microsoft.com/config/ubuntu/$(lsb_release -rs)/packages-microsoft-prod.deb"
+          sudo dpkg -i /tmp/packages-microsoft-prod.deb
+          sudo apt-get update -q
+          sudo ACCEPT_EULA=Y apt-get install -y -q msodbcsql18 unixodbc
+        fi
+
+    # Every package pinned with its hash, so nothing unpinned or swapped can install.
+    - name: Install dbt
+      shell: bash
+      run: |
+        python -m pip install --disable-pip-version-check --no-deps --require-hashes -r warehouse/requirements.txt
+        dbt --version
