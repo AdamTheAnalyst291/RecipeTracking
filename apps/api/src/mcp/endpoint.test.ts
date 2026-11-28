@@ -1,16 +1,16 @@
-import { HttpRequest, InvocationContext, type HttpResponseInit } from "@azure/functions";
-import { Client, StreamableHTTPClientTransport, type VersionNegotiationMode } from "@modelcontextprotocol/client";
+import { HttpRequest, InvocationContext } from "@azure/functions";
+import type { VersionNegotiationMode } from "@modelcontextprotocol/client";
 import type { MealPlan, Pantry, PlannedMeal, Product, ShoppingList, ShoppingLists } from "@kitchen/db";
 import type { Recipe, RecipeSummary } from "@kitchen/shared";
 import { describe, expect, it, vi } from "vitest";
 import { withAuth } from "../auth.js";
 import type { RecipeStore } from "../recipes/store.js";
 import { SOMEONE_ELSE, TENANT_ID, testAuthenticator, token } from "../test/identity.js";
-import { createMcpHandlers, MCP_LIMITS, type KitchenReads } from "./endpoint.js";
+import { BASE, call, connect } from "../test/mcpClient.js";
+import { createMcpHandlers, MCP_LIMITS, type Kitchen } from "./endpoint.js";
 
 const HOUSEHOLD = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const RECIPE = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
-const BASE = "https://func-kitchen-dev.azurewebsites.net/api";
 
 const soup: Recipe = {
   id: RECIPE,
@@ -51,52 +51,22 @@ function fakeReads(overrides: { recipes?: Partial<RecipeStore>; plan?: Partial<M
   const plan = { listWeek: vi.fn(async () => [dinner]), ...overrides.plan };
   const pantry = { listProducts: vi.fn(async () => [lentils]), ...overrides.pantry };
   const lists = { latest: vi.fn(async () => list), ...overrides.lists };
-  const reads: KitchenReads = {
+  const reads: Kitchen = {
     recipes: async () => recipes as unknown as RecipeStore,
     mealPlan: async () => ({ plan: plan as unknown as MealPlan, householdId: HOUSEHOLD }),
     pantry: async () => ({ pantry: pantry as unknown as Pantry, householdId: HOUSEHOLD }),
     shopping: async () => ({ lists: lists as unknown as ShoppingLists, householdId: HOUSEHOLD }),
+    // The write tools are tested against a real database in writeTools.test.ts.
+    cooking: async () => Promise.reject(new Error("not in these tests")),
+    fetchPage: async () => Promise.reject(new Error("not in these tests")),
   };
   return { reads, recipes, plan, pantry, lists };
 }
 
 /** The MCP functions as routes.ts wires them, signed in against the test key instead of Entra. */
-function endpoint(reads: KitchenReads, now = () => new Date("2026-11-27T15:00:00Z")) {
+function endpoint(reads: Kitchen, now = () => new Date("2026-11-27T15:00:00Z")) {
   const handlers = createMcpHandlers(reads, { tenantId: () => TENANT_ID, now });
   return { mcp: withAuth(handlers.mcp, () => testAuthenticator, handlers.challenge), metadata: handlers.metadata };
-}
-
-type Handler = (request: HttpRequest, context: InvocationContext) => Promise<HttpResponseInit>;
-
-/** A fetch that hands each request to the Functions handler, as the Functions host would. */
-function functionsFetch(handler: Handler): typeof fetch {
-  return async (input, init) => {
-    const request = new Request(input, init);
-    const body = request.method === "GET" || request.method === "HEAD" ? undefined : await request.text();
-    const response = await handler(
-      new HttpRequest({ method: request.method, url: request.url, headers: Object.fromEntries(request.headers), ...(body ? { body: { string: body } } : {}) }),
-      new InvocationContext(),
-    );
-    const payload = response.jsonBody !== undefined ? JSON.stringify(response.jsonBody) : (response.body as string | undefined);
-    return new Response(payload ?? null, { status: response.status ?? 200, headers: response.headers as Record<string, string> });
-  };
-}
-
-async function connect(handler: Handler, mode: VersionNegotiationMode, authorization?: string): Promise<Client> {
-  const client = new Client({ name: "test", version: "1.0.0" }, { versionNegotiation: { mode } });
-  const transport = new StreamableHTTPClientTransport(new URL(`${BASE}/mcp`), {
-    fetch: functionsFetch(handler),
-    ...(authorization ? { requestInit: { headers: { authorization } } } : {}),
-  });
-  await client.connect(transport);
-  return client;
-}
-
-/** The JSON a tool answered with. */
-async function call(client: Client, name: string, args: Record<string, unknown> = {}) {
-  const result = await client.callTool({ name, arguments: args });
-  const first = (result.content as { type: string; text: string }[])[0];
-  return { isError: result.isError === true, text: first?.text ?? "", json: first?.type === "text" && !result.isError ? JSON.parse(first.text) : undefined };
 }
 
 function post(authorization?: string, origin?: string): HttpRequest {
@@ -257,18 +227,21 @@ describe("MCP protected resource metadata", () => {
 describe.each([
   ["the 2025 handshake Claude uses today", "legacy" as VersionNegotiationMode],
   ["the 2026-07-28 protocol", { pin: "2026-07-28" } as VersionNegotiationMode],
-])("MCP read tools over %s", (_era, mode) => {
+])("MCP tools over %s", (_era, mode) => {
   async function signedIn(reads = fakeReads().reads) {
     return connect(endpoint(reads).mcp, mode, `Bearer ${await token()}`);
   }
 
-  it("lists the four read tools, each marked read-only", async () => {
+  it("lists the read tools marked read-only, and the write tools marked as writing", async () => {
     const client = await signedIn();
 
     const { tools } = await client.listTools();
 
-    expect(tools.map((t) => t.name).sort()).toEqual(["check_pantry", "get_meal_plan", "get_recipes", "get_shopping_list"]);
-    for (const tool of tools) expect(tool.annotations?.readOnlyHint).toBe(true);
+    const names = (readOnly: boolean) => tools.filter((t) => t.annotations?.readOnlyHint === readOnly).map((t) => t.name).sort();
+    expect(names(true)).toEqual(["check_pantry", "get_meal_plan", "get_recipes", "get_shopping_list"]);
+    expect(names(false)).toEqual(["build_shopping_list", "mark_cooked", "plan_meals", "save_recipe"]);
+    // Only cooking takes something away (pantry stock).
+    expect(tools.filter((t) => t.annotations?.destructiveHint).map((t) => t.name)).toEqual(["mark_cooked"]);
   });
 
   it("get_recipes lists the household's recipes", async () => {
@@ -370,7 +343,7 @@ describe.each([
 });
 
 describe("MCP result sizes are capped", () => {
-  async function signedIn(reads: KitchenReads) {
+  async function signedIn(reads: Kitchen) {
     return connect(endpoint(reads).mcp, "legacy", `Bearer ${await token()}`);
   }
 

@@ -16,7 +16,8 @@ import { createBankHandlers } from "./functions/banks.js";
 import { createMcpHandlers } from "./mcp/endpoint.js";
 
 const recipes = createRecipeHandlers(recipeStore);
-const recipeImport = createRecipeImportHandler(recipeStore, createPageFetcher());
+const fetchPage = createPageFetcher();
+const recipeImport = createRecipeImportHandler(recipeStore, fetchPage);
 
 const pantry = createPantryHandlers(pantryAccess);
 const cooked = createCookingHandler(cookingAccess);
@@ -28,7 +29,14 @@ const shopping = createShoppingListHandlers(shoppingListAccess);
 const money = createMoneyHandlers(moneyAccess);
 const budgets = createBudgetHandlers(budgetAccess);
 const banks = createBankHandlers(bankAccess, bankServices());
-const mcp = createMcpHandlers({ recipes: recipeStore, mealPlan: mealPlanAccess, pantry: pantryAccess, shopping: shoppingListAccess });
+const mcp = createMcpHandlers({
+  recipes: recipeStore,
+  mealPlan: mealPlanAccess,
+  pantry: pantryAccess,
+  shopping: shoppingListAccess,
+  cooking: cookingAccess,
+  fetchPage,
+});
 
 interface RouteBase {
   name: string;
@@ -81,8 +89,8 @@ const specs: RouteSpec[] = [
   { name: "moneyBankLinkToken", route: "money/bank-link-token", methods: ["POST"], access: "household", handler: banks.linkToken },
   { name: "moneyBankSync", route: "money/bank-sync", methods: ["POST"], access: "household", handler: banks.sync },
   { name: "moneyBankSandboxResetLogin", route: "money/banks/{id}/sandbox-reset-login", methods: ["POST"], access: "household", handler: banks.sandboxResetLogin },
-  // The MCP server for Claude (card P1, ADR-26): read tools only. GET and DELETE answer 405,
-  // as a stateless server does. Its 401 points clients at the metadata below.
+  // The MCP server for Claude (ADR-26): read tools (card P1) and write tools (card P2). GET and
+  // DELETE answer 405, as a stateless server does. Its 401 points clients at the metadata below.
   { name: "mcp", route: "mcp", methods: ["POST", "GET", "DELETE"], access: "household", handler: mcp.mcp, challenge: mcp.challenge },
   // RFC 9728 protected resource metadata: which Entra tenant signs MCP clients in. Public by design.
   { name: "mcpMetadata", route: ".well-known/oauth-protected-resource/mcp", methods: ["GET"], access: "public", handler: mcp.metadata },
