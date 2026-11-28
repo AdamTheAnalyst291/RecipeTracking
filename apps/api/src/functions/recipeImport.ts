@@ -1,6 +1,6 @@
 import type { HttpResponseInit } from "@azure/functions";
 import { RECIPE_LIMITS, type RecipeImportResponse } from "@kitchen/shared";
-import type { AuthenticatedHandler } from "../auth.js";
+import type { AuthenticatedHandler, SignedInUser } from "../auth.js";
 import { PageFetchError, type FetchErrorCode, type FetchPage } from "../recipes/import/fetchPage.js";
 import { readRecipePage, type ReadPage } from "../recipes/import/recipePage.js";
 import type { RecipeStore } from "../recipes/store.js";
@@ -26,6 +26,30 @@ const REASONS: Record<Extract<ReadPage, { ok: false }>["reason"], string> = {
 
 const refuse = (status: number, message: string): HttpResponseInit => ({ status, jsonBody: { error: message, errors: [message] } });
 
+export type ImportedPage = { ok: true; draft: RecipeImportResponse } | { ok: false; status: number; message: string };
+
+/**
+ * Fetches a recipe page (fetchPage is the guard on where it may go) and reads it into a draft
+ * matched to the household's foods and units. Nothing is saved.
+ */
+export async function importRecipePage(
+  url: string,
+  user: SignedInUser,
+  getStore: () => Matchable | Promise<Matchable>,
+  fetchPage: FetchPage,
+): Promise<ImportedPage> {
+  try {
+    const page = await fetchPage(url);
+    const store = await getStore();
+    const read = readRecipePage(page.html, page.url, { units: await store.units(), foods: await store.foods(user) });
+    if (!read.ok) return { ok: false, status: 422, message: REASONS[read.reason] };
+    return { ok: true, draft: { recipe: read.recipe, newFoods: read.newFoods } };
+  } catch (error) {
+    if (error instanceof PageFetchError) return { ok: false, status: STATUS[error.code], message: error.message };
+    throw error;
+  }
+}
+
 /**
  * `POST /recipe-import` with `{ url }`: reads the recipe on that web page into a draft for the
  * person to check. Nothing is saved; saving is the ordinary `POST /recipes`.
@@ -45,14 +69,10 @@ export function createRecipeImportHandler(
     if (url === "" || url.length > RECIPE_LIMITS.url) return refuse(400, "Paste the recipe page's web address.");
 
     try {
-      const page = await fetchPage(url);
-      const store = await getStore();
-      const read = readRecipePage(page.html, page.url, { units: await store.units(), foods: await store.foods(user) });
-      if (!read.ok) return refuse(422, REASONS[read.reason]);
-      const draft: RecipeImportResponse = { recipe: read.recipe, newFoods: read.newFoods };
-      return { status: 200, jsonBody: draft };
+      const imported = await importRecipePage(url, user, getStore, fetchPage);
+      if (!imported.ok) return refuse(imported.status, imported.message);
+      return { status: 200, jsonBody: imported.draft };
     } catch (error) {
-      if (error instanceof PageFetchError) return refuse(STATUS[error.code], error.message);
       console.error("Recipe import failed", error);
       return refuse(500, "Something went wrong on our side.");
     }

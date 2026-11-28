@@ -1,6 +1,23 @@
 # Claude connector (MCP endpoint)
 
-The API's MCP server (card P1, ADR-26) lives at `https://<api-host>/api/mcp`. It speaks Streamable HTTP, statelessly: both the 2026-07-28 protocol and the 2025 handshake that Claude's connectors use today. Its read tools are `get_recipes`, `get_meal_plan`, `check_pantry` and `get_shopping_list`. Write tools come with card P2, money tools with card $5.
+The API's MCP server (card P1, ADR-26) lives at `https://<api-host>/api/mcp`. It speaks Streamable HTTP, statelessly: both the 2026-07-28 protocol and the 2025 handshake that Claude's connectors use today. Money tools come with card $5.
+
+## Tools
+
+All act within the signed-in member's household, through the same functions and stores as the web app.
+
+| Tool | What it does |
+|---|---|
+| `get_recipes` | The saved recipes, or one in full. |
+| `get_meal_plan` | Seven days of planned meals. |
+| `check_pantry` | Products with stock and price. |
+| `get_shopping_list` | The latest shopping list. |
+| `plan_meals` | Adds up to 28 meals to the plan. If any recipe id is wrong, none are added. |
+| `build_shopping_list` | A new list from the plan for the given days, less what staples hold. |
+| `mark_cooked` | "I made this": takes the ingredients out of pantry stock and records it. Can't be undone. |
+| `save_recipe` | A new recipe from a web page (the importer, which only reaches public websites) or from fields Claude read from text. Saved straight away, without the web app's check-the-draft step. |
+
+Recipe and page text is untrusted data. The tool descriptions tell Claude to write only when the person asks, but that is guidance, not a control: keep the connector asking for approval before write tools (**Settings → Connectors**), above all `save_recipe` with a URL, which fetches whatever address Claude gives.
 
 ## How sign-in works
 
@@ -9,6 +26,7 @@ The API's MCP server (card P1, ADR-26) lives at `https://<api-host>/api/mcp`. It
 - **Claude signs Adam in through Entra** with its own pre-registered client, `kitchen-claude-<env>` (ADR-32, proposed). Entra has no dynamic client registration, and its Client ID Metadata Document preview can't issue tokens for a custom API.
 - **Claude sends RFC 8707 `resource=https://<api-host>/api/mcp`.** Entra accepts it only if that URL is one of kitchen-<env>'s Application ID URIs, so step 1 below adds it.
 - **The access token** is an ordinary v2 token for kitchen-<env>: `aud` is its client ID and `scp` contains `access_as_user`. The API checks it exactly as it checks the web app's (`apps/api/src/auth.ts`): tenant, audience, RS256 signature, scope, and household membership. Only Adam gets in.
+- **One call a request.** A JSON-RPC batch is refused with 400, so the rate limit counts every call. A request body may be up to 256 KB.
 - **Requests with an `Origin` header** (a web page) are refused with 403. Claude calls from Anthropic's servers and sends none.
 - **Rate limit:** 120 calls a minute per member and per running instance; more get 429 with `Retry-After: 60`.
 - **The advertised address** comes from Azure's `WEBSITE_HOSTNAME` (the app's own host name), never from the request's Host header.
@@ -86,7 +104,7 @@ npx @modelcontextprotocol/inspector@2.15.0
 In Inspector, set the transport to **Streamable HTTP**, the connection type to **Via Proxy**, and the URL to `$mcp`. The endpoint refuses browser-direct calls, because they carry an `Origin` header, and it has no CORS preflight.
 
 - **Without signing in:** **Connect** must fail with 401.
-- **Signing in:** under **Authentication**, set the client ID to `$claude` and leave the secret empty: Inspector redeems the code from the browser through the SPA redirect. Set the scope to the value of `echo "$mcp/access_as_user offline_access"`. Sign in, then **List Tools**: the four tools appear, and each answers with your Dev data.
+- **Signing in:** under **Authentication**, set the client ID to `$claude` and leave the secret empty: Inspector redeems the code from the browser through the SPA redirect. Set the scope to the value of `echo "$mcp/access_as_user offline_access"`. Sign in, then **List Tools**: the eight tools appear, and each read tool answers with your Dev data. The write tools change that data.
 
 Not yet tried against Dev: whether Inspector's browser-side OAuth can read the metadata document. The Functions app's platform CORS, which allows only the web app, may drop the document's `Access-Control-Allow-Origin: *`. If it does, check from Claude itself (step 5) instead.
 

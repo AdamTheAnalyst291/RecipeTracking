@@ -62,6 +62,14 @@ function plusDays(date: string, days: number): string {
   return day(d);
 }
 
+/** The days a new list covers. By default today and the six days after (UTC). */
+export function listDays(given: { start?: string | undefined; end?: string | undefined }, now: Date): { start: string; end: string } {
+  const start = given.start ?? day(now);
+  // An invalid start is the store's to refuse; only work out the end when the start is a plain date.
+  const end = given.end ?? (/^\d{4}-\d{2}-\d{2}$/.test(start) && !Number.isNaN(Date.parse(start)) ? plusDays(start, 6) : start);
+  return { start, end };
+}
+
 /**
  * The shopping list routes: `/shopping-list` (latest, build a new one), `.../{id}/items` (add
  * by hand) and `.../{id}/items/{itemId}` (check off, remove). `now` is for tests.
@@ -81,9 +89,7 @@ export function createShoppingListHandlers(
         if (request.method === "POST") {
           const body = await readObject(request, true);
           const given = { start: optional<string>(body, "start", "string"), end: optional<string>(body, "end", "string") };
-          const start = given.start ?? day(now());
-          // An invalid start is the store's to refuse; only work out the end when the start is a plain date.
-          const end = given.end ?? (/^\d{4}-\d{2}-\d{2}$/.test(start) && !Number.isNaN(Date.parse(start)) ? plusDays(start, 6) : start);
+          const { start, end } = listDays(given, now());
           const { lists, householdId } = await access(user);
           return { status: 201, jsonBody: await lists.generate(householdId, start, end) };
         }
