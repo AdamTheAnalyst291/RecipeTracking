@@ -10,18 +10,15 @@ import type { CallToolResult, McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod";
 import type { SignedInUser } from "../auth.js";
 import type { CookingAccess } from "../functions/cooking.js";
-import type { MealPlanAccess } from "../functions/mealPlan.js";
 import { importRecipePage } from "../functions/recipeImport.js";
-import { listDays, type ShoppingListAccess } from "../functions/shoppingList.js";
+import { listDays } from "../functions/shoppingList.js";
 import type { FetchPage } from "../recipes/import/fetchPage.js";
 import { RecipeInputError, type RecipeStore } from "../recipes/store.js";
-import { clean, GUID, json, listBody, MCP_LIMITS, toolError } from "./results.js";
+import type { KitchenReads } from "./endpoint.js";
+import { capped, clean, GUID, json, listBody, MCP_LIMITS, toolError } from "./results.js";
 
-/** What the write tools need on top of what the read tools do. */
-export interface KitchenWrites {
-  recipes: () => Promise<RecipeStore>;
-  mealPlan: MealPlanAccess;
-  shopping: ShoppingListAccess;
+/** What the write tools reach: some of what the read tools do, and more. */
+export interface KitchenWrites extends Pick<KitchenReads, "recipes" | "mealPlan" | "shopping"> {
   cooking: CookingAccess;
   /** The recipe importer's fetcher, which only reaches the public web. */
   fetchPage: FetchPage;
@@ -157,11 +154,14 @@ export function registerWriteTools(
       run("mark_cooked", async () => {
         const { cooking, householdId } = await kitchen.cooking(user);
         const cooked = await cooking.cook(householdId, recipeId.toLowerCase(), servingsMade === undefined ? {} : { servingsMade });
+        const used = capped(cooked.used, MCP_LIMITS.ingredients);
+        const shortfalls = capped(cooked.shortfalls, MCP_LIMITS.ingredients);
         return json({
           cooked: {
             ...cooked,
-            used: cooked.used.slice(0, MCP_LIMITS.ingredients).map((u) => ({ product: clean(u.product), amount: u.amount, unit: clean(u.unit) })),
-            shortfalls: cooked.shortfalls.slice(0, MCP_LIMITS.ingredients).map((s) => ({ food: clean(s.food), amount: s.amount, unit: clean(s.unit) })),
+            used: used.items.map((u) => ({ product: clean(u.product), amount: u.amount, unit: clean(u.unit) })),
+            shortfalls: shortfalls.items.map((s) => ({ food: clean(s.food), amount: s.amount, unit: clean(s.unit) })),
+            truncated: used.truncated || shortfalls.truncated,
           },
         });
       }),
@@ -198,18 +198,18 @@ export function registerWriteTools(
         const parsed = parseRecipeInput(input);
         if (!parsed.ok) return toolError(`The recipe wasn't saved. ${parsed.errors.slice(0, 10).join(" ")}`);
 
-        const saved = await save(await kitchen.recipes(), user, parsed.value);
+        const saved = await createOrExplain(await kitchen.recipes(), user, parsed.value);
         if (typeof saved === "string") return toolError(saved);
         return json({
           saved: { id: saved.id, name: clean(saved.name), servings: saved.servings, ingredients: saved.ingredients.length, steps: saved.steps.length },
-          ...(newFoods ? { newFoods: newFoods.slice(0, MCP_LIMITS.ingredients).map((f) => clean(f)) } : {}),
+          ...(newFoods ? { newFoods: capped(newFoods, MCP_LIMITS.ingredients).items.map((f) => clean(f)), totalNewFoods: newFoods.length } : {}),
         });
       }),
   );
 }
 
 /** The saved recipe, or why the store refused it, with the units it does know. */
-async function save(store: RecipeStore, user: SignedInUser, input: RecipeInput) {
+async function createOrExplain(store: RecipeStore, user: SignedInUser, input: RecipeInput) {
   try {
     return await store.create(user, input);
   } catch (error) {

@@ -32,8 +32,8 @@ export interface KitchenReads {
 /** Everything the tools reach. */
 export type Kitchen = KitchenReads & KitchenWrites;
 
-/** Largest JSON-RPC request body read, in bytes. Tool calls here are a few hundred. */
-const MAX_REQUEST_BYTES = 64 * 1024;
+/** Largest JSON-RPC request body read, in bytes. Only save_recipe's text comes near; no real recipe passes it. */
+const MAX_REQUEST_BYTES = 256 * 1024;
 
 const matches = (search: string | undefined, ...texts: string[]) => {
   if (!search) return true;
@@ -45,7 +45,7 @@ const search = z.string().max(MCP_LIMITS.search).optional();
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
 
 /** The MCP server for one request by one signed-in member. */
-function kitchenServer(user: SignedInUser, reads: Kitchen, log: InvocationContext, now: () => Date): McpServer {
+function kitchenServer(user: SignedInUser, kitchen: Kitchen, log: InvocationContext, now: () => Date): McpServer {
   const server = new McpServer({ name: "kitchen", version: "1.0.0" });
 
   /** Runs a tool; a failure the person can't fix (usually the database) is logged and answered plainly. */
@@ -76,7 +76,7 @@ function kitchenServer(user: SignedInUser, reads: Kitchen, log: InvocationContex
     },
     ({ search, id }) =>
       run("get_recipes", async () => {
-        const store = await reads.recipes();
+        const store = await kitchen.recipes();
         if (id !== undefined) {
           const recipe = await store.get(user, id.toLowerCase());
           if (!recipe) return toolError("There's no recipe with that id in this household.");
@@ -122,7 +122,7 @@ function kitchenServer(user: SignedInUser, reads: Kitchen, log: InvocationContex
     ({ start }) =>
       run("get_meal_plan", async () => {
         const from = start ?? now().toISOString().slice(0, 10);
-        const { plan, householdId } = await reads.mealPlan(user);
+        const { plan, householdId } = await kitchen.mealPlan(user);
         const meals = await plan.listWeek(householdId, from);
         const page = capped(meals, MCP_LIMITS.meals);
         return json({
@@ -149,7 +149,7 @@ function kitchenServer(user: SignedInUser, reads: Kitchen, log: InvocationContex
     },
     ({ search, staplesOnly }) =>
       run("check_pantry", async () => {
-        const { pantry, householdId } = await reads.pantry(user);
+        const { pantry, householdId } = await kitchen.pantry(user);
         const found = (await pantry.listProducts(householdId)).filter((p) => (!staplesOnly || p.staple) && matches(search, p.name));
         const page = capped(found, MCP_LIMITS.products);
         return json({
@@ -180,13 +180,13 @@ function kitchenServer(user: SignedInUser, reads: Kitchen, log: InvocationContex
     },
     () =>
       run("get_shopping_list", async () => {
-        const { lists, householdId } = await reads.shopping(user);
+        const { lists, householdId } = await kitchen.shopping(user);
         const list = await lists.latest(householdId);
         return json({ list: list ? listBody(list) : null });
       }),
   );
 
-  registerWriteTools(server, user, reads, log, run, now);
+  registerWriteTools(server, user, kitchen, log, run, now);
 
   return server;
 }
@@ -269,7 +269,7 @@ async function toFunctionsResponse(response: Response): Promise<HttpResponseInit
  * The MCP functions: `mcp` (wrap it in withAuth with `challenge`) and `metadata`, the public
  * RFC 9728 document that tells a client which Entra tenant signs it in.
  */
-export function createMcpHandlers(reads: Kitchen, options: Options = {}): {
+export function createMcpHandlers(kitchen: Kitchen, options: Options = {}): {
   mcp: AuthenticatedHandler;
   metadata: (request: HttpRequest) => Promise<HttpResponseInit>;
   challenge: Challenge;
@@ -286,7 +286,7 @@ export function createMcpHandlers(reads: Kitchen, options: Options = {}): {
     ({ authInfo }) => {
       const extra = authInfo?.extra as { user: SignedInUser; log: InvocationContext } | undefined;
       if (!extra) throw new Error("The MCP server was reached without a signed-in member");
-      return kitchenServer(extra.user, reads, extra.log, now);
+      return kitchenServer(extra.user, kitchen, extra.log, now);
     },
     { responseMode: "json", maxSubscriptions: 0, maxRequestBodySize: MAX_REQUEST_BYTES },
   );
@@ -308,9 +308,15 @@ export function createMcpHandlers(reads: Kitchen, options: Options = {}): {
       if (!allow(user.objectId)) {
         return { status: 429, headers: { "Retry-After": "60" }, jsonBody: { jsonrpc: "2.0", error: { code: -32000, message: "Too many calls; try again in a minute." } } };
       }
+      // One call a request. A JSON-RPC batch (gone from the protocol since 2025-06-18, though
+      // the SDK still takes one) would carry a hundred writes past the rate limit as one.
+      const webRequest = await toWebRequest(request);
+      if ((await webRequest.clone().text()).trimStart().startsWith("[")) {
+        return { status: 400, jsonBody: { jsonrpc: "2.0", error: { code: -32600, message: "Send one call at a time, not a batch." } } };
+      }
       // The SDK passes authInfo through to the server factory untouched: it carries who signed
       // in (already checked) and the log, not a token for anything to re-check.
-      const response = await handler.fetch(await toWebRequest(request), {
+      const response = await handler.fetch(webRequest, {
         authInfo: { token: "", clientId: "", scopes: [API_SCOPE], extra: { user, log: context } },
       });
       return toFunctionsResponse(response);

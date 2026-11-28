@@ -7,12 +7,13 @@ import { createCooking, createMealPlan, createPantry, createShoppingLists, resol
 import { createEmptyDatabase, testServer } from "@kitchen/db/test-database";
 import type sql from "mssql";
 import { readFileSync } from "node:fs";
+import { HttpRequest, InvocationContext } from "@azure/functions";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { withAuth, type SignedInUser } from "../auth.js";
 import { createPageFetcher, type FetchPage } from "../recipes/import/fetchPage.js";
 import { createSqlRecipeStore } from "../recipes/store.js";
 import { ADAM, TENANT_ID, testAuthenticator, token } from "../test/identity.js";
-import { call, connect } from "../test/mcpClient.js";
+import { BASE, call, connect } from "../test/mcpClient.js";
 import { createMcpHandlers, MCP_LIMITS, type Kitchen } from "./endpoint.js";
 
 const user: SignedInUser = { objectId: ADAM, name: "Test User", household: { id: "home", memberObjectIds: [ADAM] } };
@@ -51,9 +52,13 @@ describe.skipIf(!testServer)("MCP write tools", () => {
     };
   }
 
-  async function signedIn(over: Kitchen = kitchen()) {
+  function mcpFunction(over: Kitchen) {
     const handlers = createMcpHandlers(over, { tenantId: () => TENANT_ID, now: () => new Date("2026-11-27T15:00:00Z") });
-    return connect(withAuth(handlers.mcp, () => testAuthenticator, handlers.challenge), "legacy", `Bearer ${await token()}`);
+    return withAuth(handlers.mcp, () => testAuthenticator, handlers.challenge);
+  }
+
+  async function signedIn(over: Kitchen = kitchen()) {
+    return connect(mcpFunction(over), "legacy", `Bearer ${await token()}`);
   }
 
   const rows = async (query: string) => (await pool.request().query(query)).recordset;
@@ -207,8 +212,29 @@ describe.skipIf(!testServer)("MCP write tools", () => {
 
       const { json } = await call(client, "mark_cooked", { recipeId: recipe.id });
 
-      expect(json.cooked).toMatchObject({ servingsMade: 4, shortfalls: [{ food: "Red lentils", amount: 150, unit: "g" }] });
+      expect(json.cooked).toMatchObject({ servingsMade: 4, shortfalls: [{ food: "Red lentils", amount: 150, unit: "g" }], truncated: false });
       expect(await rows("SELECT stock_quantity FROM product")).toEqual([{ stock_quantity: 0 }]);
+    });
+
+    it("says when the lists of what was used or short are cut off", async () => {
+      const recipe = await soup();
+      const real = kitchen();
+      const client = await signedIn({
+        ...real,
+        cooking: async (member) => {
+          const access = await real.cooking(member);
+          const short = { food: "Salt", amount: 1, unit: "g" };
+          return {
+            ...access,
+            cooking: { cook: async (h, r) => ({ ...(await access.cooking.cook(h, r)), shortfalls: Array.from({ length: MCP_LIMITS.ingredients + 1 }, () => short) }) },
+          };
+        },
+      });
+
+      const { json } = await call(client, "mark_cooked", { recipeId: recipe.id });
+
+      expect(json.cooked.shortfalls).toHaveLength(MCP_LIMITS.ingredients);
+      expect(json.cooked.truncated).toBe(true);
     });
 
     it("refuses another household's recipe and records nothing", async () => {
@@ -231,6 +257,22 @@ describe.skipIf(!testServer)("MCP write tools", () => {
       expect(result.isError).toBe(true);
       expect(await rows("SELECT id FROM cooked_event")).toEqual([]);
     });
+  });
+
+  it("refuses a batch of calls, so one request can't carry a hundred writes past the rate limit", async () => {
+    const recipe = await soup();
+    const cook = (id: number) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name: "mark_cooked", arguments: { recipeId: recipe.id } } });
+    const request = new HttpRequest({
+      method: "POST",
+      url: `${BASE}/mcp`,
+      headers: { authorization: `Bearer ${await token()}`, "content-type": "application/json", accept: "application/json, text/event-stream" },
+      body: { string: ` \n${JSON.stringify([cook(1), cook(2)])}` },
+    });
+
+    const response = await mcpFunction(kitchen())(request, new InvocationContext());
+
+    expect(response.status).toBe(400);
+    expect(await rows("SELECT id FROM cooked_event")).toEqual([]);
   });
 
   describe("save_recipe", () => {
@@ -265,6 +307,15 @@ describe.skipIf(!testServer)("MCP write tools", () => {
       ]);
       expect((await rows("SELECT instruction FROM recipe_step ORDER BY position")).map((r) => r.instruction)).toEqual(stew.steps);
       expect(await rows("SELECT id FROM cooked_event")).toEqual([]);
+    });
+
+    it("saves a long recipe, well past what a read call needs", async () => {
+      const client = await signedIn();
+      const steps = Array.from({ length: 40 }, () => "Stir slowly. ".repeat(250)); // about 130 KB
+
+      const { json } = await call(client, "save_recipe", { recipe: { ...stew, steps } });
+
+      expect(json.saved).toMatchObject({ steps: 40 });
     });
 
     it("saves the recipe on a web page through the importer", async () => {

@@ -26,6 +26,7 @@ Recipe and page text is untrusted data. The tool descriptions tell Claude to wri
 - **Claude signs Adam in through Entra** with its own pre-registered client, `kitchen-claude-<env>` (ADR-32, proposed). Entra has no dynamic client registration, and its Client ID Metadata Document preview can't issue tokens for a custom API.
 - **Claude sends RFC 8707 `resource=https://<api-host>/api/mcp`.** Entra accepts it only if that URL is one of kitchen-<env>'s Application ID URIs, so step 1 below adds it.
 - **The access token** is an ordinary v2 token for kitchen-<env>: `aud` is its client ID and `scp` contains `access_as_user`. The API checks it exactly as it checks the web app's (`apps/api/src/auth.ts`): tenant, audience, RS256 signature, scope, and household membership. Only Adam gets in.
+- **One call a request.** A JSON-RPC batch is refused with 400, so the rate limit counts every call. A request body may be up to 256 KB.
 - **Requests with an `Origin` header** (a web page) are refused with 403. Claude calls from Anthropic's servers and sends none.
 - **Rate limit:** 120 calls a minute per member and per running instance; more get 429 with `Retry-After: 60`.
 - **The advertised address** comes from Azure's `WEBSITE_HOSTNAME` (the app's own host name), never from the request's Host header.
