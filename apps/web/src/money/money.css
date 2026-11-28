@@ -115,6 +115,14 @@
   margin: 0;
   padding-left: 1.25rem;
 }
+.money-cat {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
 /* Budgets (card $3). */
 .money-month {
   display: flex;

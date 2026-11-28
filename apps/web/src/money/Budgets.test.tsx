@@ -11,7 +11,7 @@ vi.setConfig({ testTimeout: 20_000 });
 
 function open(api = inMemoryBudgetApi()) {
   const user = userEvent.setup();
-  render(<Budgets api={api} categories={[...sampleCategories(), { id: "c-books", name: "Books" }]} today="2026-11-27" />);
+  render(<Budgets api={api} categories={[...sampleCategories(), { id: "c-books", name: "Books", kind: "spending" }]} today="2026-11-27" />);
   return { api, user };
 }
 const line = (category: string) => screen.getByRole("listitem", { name: new RegExp(`^${category}`) });
@@ -55,6 +55,14 @@ describe("the budget view", () => {
     await user.click(within(form).getByRole("button", { name: "Add" }));
     await vi.waitFor(() => expect(api.calls).toContainEqual(["c-books", "2026-11", 2500]));
     expect(await screen.findByText("$0.00 of $25.00")).toBeTruthy();
+  });
+
+  it("offers only spending categories for a new budget (card $6)", async () => {
+    const cats = [...sampleCategories(), { id: "c-books", name: "Books", kind: "spending" as const }, { id: "c-pay", name: "Pay", kind: "not-spending" as const }];
+    render(<Budgets api={inMemoryBudgetApi()} categories={cats} today="2026-11-27" />);
+    await screen.findByRole("heading", { name: "November 2026" });
+    const options = within(within(screen.getByRole("group", { name: "Add a budget" })).getByLabelText("Category")).getAllByRole("option");
+    expect(options.map((o) => o.textContent)).toEqual(["Choose…", "Books"]);
   });
 
   it("clears a budget from this month on", async () => {

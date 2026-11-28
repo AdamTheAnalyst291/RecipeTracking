@@ -22,9 +22,10 @@ export interface MonthBudget {
   /** `YYYY-MM`. */
   month: string;
   /**
-   * Groceries first (always, when the household has that category), then by name every
-   * category with a budget this month or with money spent in it. A category with no budget
-   * whose month is money in (income, say) isn't spending, so it isn't listed.
+   * Spending categories only: Groceries first (always, when the household has that
+   * category), then by name every category with a budget this month or with money spent in
+   * it. A category with no budget whose month is money in isn't listed. Not-spending
+   * categories (transfers, pay, other income) are never listed, budget or not.
    */
   lines: BudgetLine[];
 }
@@ -34,7 +35,8 @@ export interface Budgets {
   month(householdId: string, month: string): Promise<MonthBudget>;
   /**
    * Sets a category's monthly budget from `month` onwards, until a later month's budget; null
-   * clears it from that month. Returns that month's spend vs budget.
+   * clears it from that month. Only a spending category takes an amount. Returns that
+   * month's spend vs budget.
    */
   setBudget(householdId: string, categoryId: string, month: string, amountCents: number | null): Promise<MonthBudget>;
 }
@@ -69,7 +71,8 @@ interface LineRow {
 
 // Spending counts only categorized money: a transaction's own category, or each part of a
 // split in its own category (a split transaction has no category of its own). Uncategorized
-// money, such as pay or a transfer nobody categorized, counts nowhere.
+// money counts nowhere, and not-spending categories (transfers, pay, other income; card $6)
+// are left out entirely, so their money is never spending or a refund.
 const monthQuery = `
   DECLARE @end DATE = DATEADD(MONTH, 1, @m);
   WITH parts AS (
@@ -93,7 +96,7 @@ const monthQuery = `
   FROM money_category c
   LEFT JOIN spent s ON s.category_id = c.id
   LEFT JOIN latest b ON b.category_id = c.id AND b.newest = 1
-  WHERE c.household_id = @h AND (c.name = N'Groceries' OR b.amount_cents IS NOT NULL OR s.cents > 0)
+  WHERE c.household_id = @h AND c.kind = 'spending' AND (c.name = N'Groceries' OR b.amount_cents IS NOT NULL OR s.cents > 0)
   ORDER BY CASE WHEN c.name = N'Groceries' THEN 0 ELSE 1 END, c.name, c.id`;
 
 export function createBudgets(pool: mssql.ConnectionPool): Budgets {
@@ -125,8 +128,11 @@ export function createBudgets(pool: mssql.ConnectionPool): Budgets {
         .input("m", mssql.Date, start)
         .input("a", mssql.BigInt, amount)
         .query(`
-          IF NOT EXISTS (SELECT 1 FROM money_category WHERE id = @c AND household_id = @h)
-            SELECT CAST(0 AS BIT) AS found;
+          DECLARE @kind VARCHAR(20) = (SELECT kind FROM money_category WHERE id = @c AND household_id = @h);
+          IF @kind IS NULL
+            SELECT CAST(0 AS BIT) AS found, CAST(NULL AS VARCHAR(20)) AS kind;
+          ELSE IF @kind <> 'spending' AND @a IS NOT NULL
+            SELECT CAST(1 AS BIT) AS found, @kind AS kind;
           ELSE
           BEGIN
             MERGE money_budget WITH (HOLDLOCK) AS b
@@ -134,9 +140,11 @@ export function createBudgets(pool: mssql.ConnectionPool): Budgets {
               ON b.household_id = s.household_id AND b.category_id = s.category_id AND b.starts_on = s.starts_on
             WHEN MATCHED THEN UPDATE SET amount_cents = @a, updated_at = SYSUTCDATETIME()
             WHEN NOT MATCHED THEN INSERT (household_id, category_id, starts_on, amount_cents) VALUES (@h, @c, @m, @a);
-            SELECT CAST(1 AS BIT) AS found;
+            SELECT CAST(1 AS BIT) AS found, @kind AS kind;
           END`);
-      if (!(r.recordset[0] as { found: boolean }).found) throw new MoneyError("not-found", "There's no such category.");
+      const result = r.recordset[0] as { found: boolean; kind: string | null };
+      if (!result.found) throw new MoneyError("not-found", "There's no such category.");
+      if (result.kind !== "spending" && amount !== null) throw new MoneyError("invalid", "Only a spending category can have a budget.");
       return month(householdId, monthText);
     },
   };

@@ -98,6 +98,32 @@ describe("the money screen: rules and categories", () => {
     await user.type(screen.getByLabelText("New category"), "Eating out");
     await user.click(screen.getByRole("button", { name: "Add category" }));
     await vi.waitFor(() => expect(api.cats.map((c) => c.name)).toContain("Eating out"));
+    expect(api.cats.find((c) => c.name === "Eating out")?.kind).toBe("spending");
+  });
+
+  it("adds a not-spending category and changes a category's kind (card $6)", async () => {
+    const { api, user } = open();
+    await user.click(await screen.findByRole("tab", { name: "Rules" }));
+    await user.type(screen.getByLabelText("New category"), "Pay");
+    await user.selectOptions(screen.getByLabelText("New category kind"), "Not spending");
+    await user.click(screen.getByRole("button", { name: "Add category" }));
+    await vi.waitFor(() => expect(api.cats.find((c) => c.name === "Pay")?.kind).toBe("not-spending"));
+    expect((screen.getByLabelText("Kind of Pay") as HTMLSelectElement).value).toBe("not-spending");
+
+    await user.selectOptions(screen.getByLabelText("Kind of Household"), "Not spending");
+    await vi.waitFor(() => expect(api.cats.find((c) => c.name === "Household")?.kind).toBe("not-spending"));
+    expect((screen.getByLabelText("Kind of Household") as HTMLSelectElement).value).toBe("not-spending");
+    await user.selectOptions(screen.getByLabelText("Kind of Household"), "Spending");
+    await vi.waitFor(() => expect(api.cats.find((c) => c.name === "Household")?.kind).toBe("spending"));
+  });
+
+  it("keeps a category's kind as it was when the change is refused", async () => {
+    const { api, user } = open();
+    api.setCategoryKind = async () => Promise.reject(new Error("Money isn't available right now."));
+    await user.click(await screen.findByRole("tab", { name: "Rules" }));
+    await user.selectOptions(screen.getByLabelText("Kind of Household"), "Not spending");
+    expect((await screen.findByRole("alert")).textContent).toMatch(/isn't available/);
+    expect((screen.getByLabelText("Kind of Household") as HTMLSelectElement).value).toBe("spending");
   });
 
   it("adds rules, reorders and removes them, and runs them", async () => {

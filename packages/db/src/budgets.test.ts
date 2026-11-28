@@ -108,6 +108,57 @@ describe.skipIf(!testServer)("budgets: monthly category budgets and spend vs bud
     });
   });
 
+  describe("not-spending categories (card $6)", () => {
+    it("never counts a categorized transfer or a paycheck as spending or as a refund", async () => {
+      const { h, cat, tx } = await household("Groceries", "Pay", "Transfers");
+      await money.updateCategory(h, cat.Pay!, { kind: "not-spending" });
+      await money.updateCategory(h, cat.Transfers!, { kind: "not-spending" });
+      await tx("2026-11-01", 150000, "Pay"); // a paycheck
+      await tx("2026-11-03", -50000, "Transfers"); // a one-sided transfer to savings at another bank
+      await tx("2026-11-04", 20000, "Transfers"); // money moved in from another account
+      await tx("2026-11-05", -3000, "Groceries");
+
+      expect(lines(await budgets.month(h, "2026-11"))).toEqual([["Groceries", 3000, null]]);
+    });
+
+    it("leaves a not-spending category out even when it has a budget, and counts no split part in it", async () => {
+      const { h, cat, tx } = await household("Groceries", "Transfers");
+      await budgets.setBudget(h, cat.Transfers!, "2026-11", 10000);
+      const id = await tx("2026-11-06", -10000);
+      await money.setSplits(h, id, [
+        { categoryId: cat.Groceries!, amountCents: -4000 },
+        { categoryId: cat.Transfers!, amountCents: -6000 },
+      ]);
+      await tx("2026-11-07", 2500, "Transfers");
+      expect(lines(await budgets.month(h, "2026-11"))).toEqual([
+        ["Groceries", 4000, null],
+        ["Transfers", 3500, 10000],
+      ]);
+
+      await money.updateCategory(h, cat.Transfers!, { kind: "not-spending" });
+      expect(lines(await budgets.month(h, "2026-11"))).toEqual([["Groceries", 4000, null]]);
+
+      // Back to spending: its budget and spend show again, nothing was lost.
+      await money.updateCategory(h, cat.Transfers!, { kind: "spending" });
+      expect(lines(await budgets.month(h, "2026-11"))).toEqual([
+        ["Groceries", 4000, null],
+        ["Transfers", 3500, 10000],
+      ]);
+    });
+
+    it("leaves out a not-spending category even when it is called Groceries", async () => {
+      const { h, cat } = await household("Groceries");
+      await money.updateCategory(h, cat.Groceries!, { kind: "not-spending" });
+      expect(lines(await budgets.month(h, "2026-11"))).toEqual([]);
+    });
+
+    it("refuses a budget for a not-spending category", async () => {
+      const { h, cat } = await household("Pay");
+      await money.updateCategory(h, cat.Pay!, { kind: "not-spending" });
+      expect((await rejection(budgets.setBudget(h, cat.Pay!, "2026-11", 100))).code).toBe("invalid");
+    });
+  });
+
   describe("budgets", () => {
     it("carries a budget forward to later months until it is changed or cleared", async () => {
       const { h, cat } = await household("Groceries");

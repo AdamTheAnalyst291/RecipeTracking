@@ -70,7 +70,8 @@ export function Budgets({ api, categories, today }: Props) {
   }
 
   const listed = new Set(report?.lines.map((l) => l.categoryId));
-  const unlisted = categories.filter((c) => !listed.has(c.id));
+  // Not-spending categories (transfers, pay, other income) never have a budget (card $6).
+  const unlisted = categories.filter((c) => c.kind === "spending" && !listed.has(c.id));
 
   return (
     <div className="money-budgets">

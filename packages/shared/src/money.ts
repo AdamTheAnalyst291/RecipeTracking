@@ -8,9 +8,28 @@ export interface MoneyAccount {
   mask: string | null;
 }
 
+/**
+ * `spending` counts towards spend vs budget; `not-spending` is for transfers, pay and other
+ * income, which budgets leave out entirely (card $6).
+ */
+export type MoneyCategoryKind = "spending" | "not-spending";
+
 export interface MoneyCategory {
   id: string;
   name: string;
+  kind: MoneyCategoryKind;
+}
+
+/** Body of `POST /api/money/categories`; `kind` defaults to spending. */
+export interface NewMoneyCategory {
+  name: string;
+  kind?: MoneyCategoryKind;
+}
+
+/** Body of `PATCH /api/money/categories/{id}`: a new name, a new kind, or both. */
+export interface MoneyCategoryChange {
+  name?: string;
+  kind?: MoneyCategoryKind;
 }
 
 export interface MoneySplit {

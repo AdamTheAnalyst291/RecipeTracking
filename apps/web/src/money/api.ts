@@ -2,12 +2,15 @@ import type {
   ApiError,
   MoneyCategoriesResponse,
   MoneyCategory,
+  MoneyCategoryChange,
+  MoneyCategoryKind,
   MoneyRule,
   MoneyRulesApplied,
   MoneyRulesResponse,
   MoneySplitsChange,
   MoneyTransaction,
   MoneyTransactionsResponse,
+  NewMoneyCategory,
   NewMoneyRule,
 } from "@kitchen/shared";
 
@@ -19,7 +22,9 @@ export interface MoneyApi {
   setCategory(transactionId: string, categoryId: string | null): Promise<MoneyTransaction>;
   setSplits(transactionId: string, splits: MoneySplitsChange["splits"]): Promise<MoneyTransaction>;
   categories(): Promise<MoneyCategory[]>;
-  addCategory(name: string): Promise<MoneyCategory>;
+  addCategory(name: string, kind?: MoneyCategoryKind): Promise<MoneyCategory>;
+  /** Spending, or not spending (transfers, pay, other income), which budgets leave out. */
+  setCategoryKind(categoryId: string, kind: MoneyCategoryKind): Promise<MoneyCategory>;
   rules(): Promise<MoneyRule[]>;
   addRule(rule: NewMoneyRule): Promise<MoneyRule>;
   removeRule(ruleId: string): Promise<void>;
@@ -63,7 +68,8 @@ export function createMoneyApi(apiUrl: string, getToken: () => Promise<string>, 
     async categories() {
       return (await json<MoneyCategoriesResponse>("GET", "/categories")).categories;
     },
-    addCategory: (name) => json("POST", "/categories", { name }),
+    addCategory: (name, kind) => json("POST", "/categories", { name, kind } satisfies NewMoneyCategory),
+    setCategoryKind: (categoryId, kind) => json("PATCH", `/categories/${categoryId}`, { kind } satisfies MoneyCategoryChange),
     async rules() {
       return (await json<MoneyRulesResponse>("GET", "/rules")).rules;
     },

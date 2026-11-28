@@ -26,6 +26,16 @@ describe("the money API client", () => {
     expect(calls[2]?.[0]).toBe("https://api.test/api/money/rule-order");
   });
 
+  it("adds a category with its kind and patches a category's kind", async () => {
+    const fetchFn = vi.fn(async () => json({}));
+    const api = createMoneyApi("https://api.test", async () => "tok", fetchFn);
+    await api.addCategory("Pay", "not-spending");
+    await api.setCategoryKind("c1", "spending");
+    const calls = fetchFn.mock.calls as unknown as [string, RequestInit][];
+    expect(calls[0]).toEqual(["https://api.test/api/money/categories", expect.objectContaining({ method: "POST", body: '{"name":"Pay","kind":"not-spending"}' })]);
+    expect(calls[1]).toEqual(["https://api.test/api/money/categories/c1", expect.objectContaining({ method: "PATCH", body: '{"kind":"spending"}' })]);
+  });
+
   it("turns a refusal into an error with the API's message", async () => {
     const api = createMoneyApi("https://api.test", async () => "tok", async () => json({ error: "The splits must add up" }, 400));
     const e = await api.setSplits("t1", []).catch((error: unknown) => error);
