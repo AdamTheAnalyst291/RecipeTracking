@@ -49,10 +49,10 @@ export interface PriceUpdate {
   unit: string;
 }
 
-/** A matched product whose price was left as it was, and why. */
+/** A matched line that priced nothing, and why. `product` is null when the line matched only a food. */
 export interface PriceKept {
   line: number;
-  product: string;
+  product: string | null;
   reason: string;
 }
 
@@ -118,40 +118,48 @@ function packagePrice(
   product: ProductRow,
   factors: ReadonlyMap<string, number>,
 ): { priceCents: number; packageQuantity: number } | string {
-  if (line.priceCents <= 0) return "The line has no price paid.";
+  const priceCents = Math.round(line.priceCents / line.quantity);
+  if (priceCents <= 0) return "The line has no price paid.";
   if (line.packageQuantity === undefined || line.unitId === null) return "The line has no package size.";
   const factor = line.unitId === product.unitId ? 1 : factors.get(`${line.unitId} ${product.unitId}`);
-  const size = factor === undefined ? 0 : Math.round(line.packageQuantity * factor * 10_000) / 10_000;
-  if (size <= 0) return `The size in ${line.unit} can't be turned into ${product.unit}.`;
-  return { priceCents: Math.round(line.priceCents / line.quantity), packageQuantity: size };
+  if (factor === undefined) return `The size in ${line.unit} can't be turned into ${product.unit}.`;
+  const size = Math.round(line.packageQuantity * factor * 10_000) / 10_000;
+  if (size <= 0) return `The size is too small to count in ${product.unit}.`;
+  return { priceCents, packageQuantity: size };
 }
 
 interface Match {
   foodId: string;
   food: string;
   product: ProductRow | null;
+  /** Why there is no product, when there isn't. */
+  noProduct?: string;
 }
 
 /** The household's foods and products, looked up by a line's name. */
 function matcher(foods: FoodRow[], products: ProductRow[]) {
   const productsByName = grouped(products, (p) => key(p.name));
   const productsByFood = grouped(products, (p) => p.foodId);
-  const foodsByName = new Map(foods.map((f) => [key(f.name), f]));
+  const foodsByName = grouped(foods, (f) => key(f.name));
 
   return (name: string): Match | null => {
     const named = productsByName.get(key(name)) ?? [];
     const [only] = named;
     if (only && named.length === 1) return { foodId: only.foodId, food: only.food, product: only };
-    const food = foodsByName.get(key(name));
-    if (!food) return null;
-    const ofFood = productsByFood.get(food.id) ?? [];
-    return { foodId: food.id, food: food.name, product: ofFood.length === 1 ? (ofFood[0] ?? null) : null };
+    // Food names are unique but for their spacing; two that read the same are as good as none.
+    const [food, another] = foodsByName.get(key(name)) ?? [];
+    if (!food || another) return null;
+    const [product, second] = productsByFood.get(food.id) ?? [];
+    const match = { foodId: food.id, food: food.name };
+    if (product && !second) return { ...match, product };
+    return { ...match, product: null, noProduct: product ? "The food has several products; name one with item." : "The food has no product in the pantry." };
   };
 }
 
 export function createReceipts(pool: mssql.ConnectionPool): Receipts {
   return {
-    async add(householdId, receipt) {
+    async add(householdId, given) {
+      const receipt = { ...given, store: given.store.trim().replace(/\s+/g, " ") };
       const household = () => pool.request().input("h", mssql.UniqueIdentifier, householdId);
       const foods = (await household().query("SELECT id, name FROM food WHERE household_id = @h")).recordset as FoodRow[];
       const products = (
@@ -184,6 +192,18 @@ export function createReceipts(pool: mssql.ConnectionPool): Receipts {
       const pricesUpdated: PriceUpdate[] = [];
       const pricesNotUpdated: PriceKept[] = [];
       try {
+        // Locked before the ledger's rows point at them, and in id order as cooking locks them,
+        // so a receipt and a cook sharing products can't wait on each other.
+        const matched = [...new Set(lines.flatMap((l) => (l.match?.product ? [l.match.product.id] : [])))];
+        if (matched.length > 0) {
+          const request = new mssql.Request(tx).input("h", mssql.UniqueIdentifier, householdId);
+          const names = matched.map((id, i) => {
+            request.input(`p${i}`, mssql.UniqueIdentifier, id);
+            return `@p${i}`;
+          });
+          await request.query(`SELECT id FROM product WITH (UPDLOCK, ROWLOCK) WHERE household_id = @h AND id IN (${names.join(", ")}) ORDER BY id`);
+        }
+
         if (!receipt.secondPurchase) {
           // The range lock holds until commit, so the same receipt sent twice at once is saved once.
           const saved = await new mssql.Request(tx)
@@ -226,10 +246,15 @@ export function createReceipts(pool: mssql.ConnectionPool): Receipts {
             );
         }
 
+        const priced = new Set<string>();
         for (const line of lines) {
-          const product = line.match?.product;
-          if (!product) continue;
-          const keep = (reason: string) => pricesNotUpdated.push({ line: line.no, product: product.name, reason });
+          if (!line.match) continue;
+          const { product, noProduct } = line.match;
+          const keep = (reason: string) => pricesNotUpdated.push({ line: line.no, product: product?.name ?? null, reason });
+          if (!product) {
+            keep(noProduct ?? "");
+            continue;
+          }
           if (!product.staple) {
             keep("Not a staple.");
             continue;
@@ -237,6 +262,10 @@ export function createReceipts(pool: mssql.ConnectionPool): Receipts {
           const price = packagePrice(line, product, factors);
           if (typeof price === "string") {
             keep(price);
+            continue;
+          }
+          if (priced.has(product.id)) {
+            keep("An earlier line of this receipt already set its price.");
             continue;
           }
           const updated = await new mssql.Request(tx)
@@ -250,9 +279,11 @@ export function createReceipts(pool: mssql.ConnectionPool): Receipts {
                OUTPUT inserted.id WHERE household_id = @h AND id = @p AND (price_date IS NULL OR price_date < CONVERT(DATE, @date));
                SELECT CONVERT(CHAR(10), price_date, 23) AS priceDate FROM product WHERE household_id = @h AND id = @p;`,
             );
-          const [changed, now] = updated.recordsets as unknown as [unknown[], { priceDate: string }[]];
-          if (changed.length > 0) pricesUpdated.push({ line: line.no, product: product.name, ...price, unit: product.unit });
-          else keep(`The price on record is from ${now[0]?.priceDate}, so this receipt isn't newer.`);
+          const [changed, current] = updated.recordsets as unknown as [unknown[], { priceDate: string }[]];
+          if (changed.length > 0) {
+            priced.add(product.id);
+            pricesUpdated.push({ line: line.no, product: product.name, ...price, unit: product.unit });
+          } else keep(`The price on record is from ${current[0]?.priceDate}, so this receipt isn't newer.`);
         }
         await tx.commit();
       } catch (error) {

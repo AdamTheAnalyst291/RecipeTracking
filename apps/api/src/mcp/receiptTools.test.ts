@@ -172,6 +172,65 @@ describe.skipIf(!testServer)("add_receipt", () => {
     });
   });
 
+  describe("lines that could price the same product, or none", () => {
+    const send = async (items: ReceiptFixture["items"]) => call(await signedIn(), "add_receipt", { ...fixture("weekly-grocery"), items });
+    const price = () => rows("SELECT price_cents FROM product ORDER BY price_cents");
+    const milk = { name: "Whole milk", priceCents: 349, packageQuantity: 1, unit: "l" };
+
+    it("prices a product from the first line that can, and says so for the later ones", async () => {
+      await stocked("Whole milk", "ml");
+
+      const { json } = await send([{ name: "Whole milk", priceCents: 10 }, milk, { ...milk, priceCents: 199 }]);
+
+      expect(await price()).toEqual([{ price_cents: 349 }]);
+      expect(json.pricesNotUpdated).toEqual([
+        { line: 1, product: "Whole milk", reason: "The line has no package size." },
+        { line: 3, product: "Whole milk", reason: "An earlier line of this receipt already set its price." },
+      ]);
+    });
+
+    it.each([
+      ["several products", ["ml", "l"], "The food has several products; name one with item."],
+      ["no product", [], "The food has no product in the pantry."],
+    ])("says why nothing was priced when the food has %s", async (_name, units, reason) => {
+      await rows(`INSERT food (household_id, name) VALUES ('${household}', 'Whole milk')`);
+      for (const unit of units) {
+        const product = await stocked("Whole milk", unit);
+        await rows(`UPDATE product SET name = 'Milk, ${unit}' WHERE id = '${product.id}'`);
+      }
+
+      const { json } = await send([milk]);
+
+      expect(json.pricesNotUpdated).toEqual([{ line: 1, product: null, reason }]);
+    });
+
+    it("never prices a staple at nothing when a few cents are split over many packages", async () => {
+      await stocked("Whole milk", "ml");
+
+      const { json } = await send([{ ...milk, priceCents: 1, quantity: 3 }]);
+
+      expect(await price()).toEqual([{ price_cents: null }]);
+      expect(json.pricesNotUpdated).toEqual([{ line: 1, product: "Whole milk", reason: "The line has no price paid." }]);
+    });
+
+    it("says when a size is too small to count in the product's unit", async () => {
+      await stocked("Whole milk", "l");
+
+      const { json } = await send([{ ...milk, packageQuantity: 0.0001, unit: "ml" }]);
+
+      expect(json.pricesNotUpdated).toEqual([{ line: 1, product: "Whole milk", reason: "The size is too small to count in l." }]);
+    });
+
+    it("picks neither of two foods whose names differ only in spacing", async () => {
+      await rows(`INSERT food (household_id, name) VALUES ('${household}', 'Whole milk'), ('${household}', 'Whole  milk')`);
+
+      const { json } = await send([milk]);
+
+      expect(json.matched).toEqual([]);
+      expect(json.unmatched).toHaveLength(1);
+    });
+  });
+
   describe("matching", () => {
     it("reports the lines it couldn't match, and says what it matched the rest to", async () => {
       await stocked("Red lentils", "g");
@@ -296,7 +355,7 @@ describe.skipIf(!testServer)("add_receipt", () => {
       const client = await signedIn();
       await call(client, "add_receipt", receipt);
 
-      const result = await call(client, "add_receipt", { ...receipt, store: "corner market " });
+      const result = await call(client, "add_receipt", { ...receipt, store: " corner   market " });
 
       expect(result.isError).toBe(true);
       expect(result.text).toMatch(/already saved/i);
