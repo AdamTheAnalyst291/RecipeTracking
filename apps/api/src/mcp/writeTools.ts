@@ -15,11 +15,13 @@ import { listDays } from "../functions/shoppingList.js";
 import type { FetchPage } from "../recipes/import/fetchPage.js";
 import { RecipeInputError, type RecipeStore } from "../recipes/store.js";
 import type { KitchenReads } from "./endpoint.js";
+import { registerReceiptTool, type ReceiptAccess } from "./receiptTool.js";
 import { capped, clean, GUID, json, listBody, MCP_LIMITS, toolError } from "./results.js";
 
 /** What the write tools reach: some of what the read tools do, and more. */
 export interface KitchenWrites extends Pick<KitchenReads, "recipes" | "mealPlan" | "shopping"> {
   cooking: CookingAccess;
+  receipts: ReceiptAccess;
   /** The recipe importer's fetcher, which only reaches the public web. */
   fetchPage: FetchPage;
 }
@@ -166,6 +168,8 @@ export function registerWriteTools(
         });
       }),
   );
+
+  registerReceiptTool(server, user, kitchen.receipts, run, now);
 
   server.registerTool(
     "save_recipe",

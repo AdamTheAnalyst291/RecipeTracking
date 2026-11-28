@@ -47,6 +47,8 @@ describe.skipIf(!testServer)("MCP write tools", () => {
       pantry: async () => ({ pantry: createPantry(pool), householdId: await member() }),
       shopping: async () => ({ lists: createShoppingLists(pool), householdId: await member() }),
       cooking: async () => ({ cooking: createCooking(pool), householdId: await member() }),
+      // add_receipt is tested in receiptTools.test.ts.
+      receipts: async () => Promise.reject(new Error("not in these tests")),
       // A test that reads a page says which.
       fetchPage: async () => Promise.reject(new Error("No page was expected")),
     };

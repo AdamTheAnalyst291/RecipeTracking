@@ -36,6 +36,18 @@ export {
 } from "./mealPlan.js";
 export { resolveHousehold, type Member } from "./households.js";
 export {
+  ReceiptError,
+  createReceipts,
+  type MatchedLine,
+  type NewReceipt,
+  type NewReceiptLine,
+  type PriceKept,
+  type PriceUpdate,
+  type Receipts,
+  type SavedReceipt,
+  type UnmatchedLine,
+} from "./receipts.js";
+export {
   ShoppingListError,
   createShoppingLists,
   type NewShoppingItem,
