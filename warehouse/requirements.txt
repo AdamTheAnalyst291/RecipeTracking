@@ -432,9 +432,9 @@ dbt-protos==1.0.615 \
     #   dbt-adapters
     #   dbt-common
     #   dbt-core
-dbt-sqlserver==1.12.2 \
-    --hash=sha256:3cf06a02c0628b3e1e752703d45e90a2e15ddfa369f7154ec5cb002d879438d7 \
-    --hash=sha256:e17fa56d4b11bf3d9566280893c2e7c1138bef7847ae0245d0702cb79cabed9b
+dbt-sqlserver[azure,pyodbc]==1.12.3 \
+    --hash=sha256:7164c3336954d496a38a76322b9b4abe8fd275d1e0d7257038753a054a533302 \
+    --hash=sha256:eb6d7b3fed3aab26699ae796afaf7f2d81113b25cee55d0f4339fd01349498e2
     # via -r requirements.in
 deepdiff==8.6.2 \
     --hash=sha256:186dcbd181e4d76cef11ab05f802d0056c5d6083c5a6748c1473e9d7481e183e \
@@ -633,7 +633,7 @@ markupsafe==3.0.4 \
     --hash=sha256:fd9f8797427910198f95bced71ddfed61130d7e349213bfb8466c9c99e2c46a8 \
     --hash=sha256:fdb4ca07ab75ffadab4a8b135ad59cdbb3156b99310f3d565370da74a15d6bd3
     # via jinja2
-mashumaro==3.17 \
+mashumaro[msgpack]==3.17 \
     --hash=sha256:3964e2c804f62de9e4c58fb985de71dcd716f9507cc18374b1bd5c4f1a1b879b \
     --hash=sha256:de1d8b1faffee58969c7f97e35963a92480a38d4c9858e92e0721efec12258ed
     # via
@@ -947,10 +947,12 @@ pydantic-core==2.50.5 \
     --hash=sha256:fa66340c6d3e08a276803812e7665312dfc75dd24eedfa8e09f18a0f8e3e0e8f \
     --hash=sha256:feb8c87dbc4684777ddafbf37c922d9e2748272ba61e362ebf85db73ebda6234
     # via pydantic
-pyjwt==2.15.1 \
+pyjwt[crypto]==2.15.1 \
     --hash=sha256:42d59d631f7768a1028a64c7ff581a9bf7519804daf91fc5b6c56e30eec5e193 \
     --hash=sha256:4f259e80cdfb6b3fc18a7de51fd1ef9ec79652f25019bae68975ca2468a34df8
-    # via msal
+    # via
+    #   msal
+    #   pyjwt
 pyodbc==5.5.0 \
     --hash=sha256:0018d26f79707d06c9c02a18a1c2ba2d36ef311af1eccce242f3889a0b8b6bea \
     --hash=sha256:013ed452dffa60462835580af31071e31de7ff1358b97728dcb705db73a180a8 \

@@ -6,4 +6,4 @@
 dbt-core==1.12.7
 # pyodbc talks to SQL Server through Microsoft's ODBC driver; azure-identity signs in with
 # the Azure CLI's session (OIDC in GitHub Actions).
-dbt-sqlserver[pyodbc,azure]==1.12.2
+dbt-sqlserver[pyodbc,azure]==1.12.3
