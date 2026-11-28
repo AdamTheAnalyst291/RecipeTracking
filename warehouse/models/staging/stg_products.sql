@@ -9,7 +9,7 @@ select
     is_staple,
     package_quantity,
     price_cents,
-    cast(price_cents / 100.0 as decimal(19, 2)) as price,
+    {{ cents_to_dollars('price_cents') }} as price,
     price_date,
     created_at
 from {{ source('app', 'product') }}

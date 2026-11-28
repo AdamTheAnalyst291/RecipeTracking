@@ -14,4 +14,10 @@ IF SCHEMA_ID(N'marts') IS NULL
 ELSE IF (SELECT principal_id FROM sys.schemas WHERE name = N'marts') <> DATABASE_PRINCIPAL_ID(N'$(WAREHOUSE_BUILDER)')
   ALTER AUTHORIZATION ON SCHEMA::marts TO [$(WAREHOUSE_BUILDER)];
 GRANT SELECT ON SCHEMA::dbo TO [$(WAREHOUSE_BUILDER)];
+-- Except what only sign-in and the bank sync need: who someone is in Entra, and the bank
+-- connections (Key Vault secret names, sync cursors). No model reads them.
+DENY SELECT ON OBJECT::dbo.plaid_item TO [$(WAREHOUSE_BUILDER)];
+DENY SELECT ON OBJECT::dbo.plaid_item_account TO [$(WAREHOUSE_BUILDER)];
+DENY SELECT ON OBJECT::dbo.plaid_withdrawn TO [$(WAREHOUSE_BUILDER)];
+DENY SELECT ON OBJECT::dbo.[user] (entra_object_id) TO [$(WAREHOUSE_BUILDER)];
 GRANT CREATE TABLE, CREATE VIEW TO [$(WAREHOUSE_BUILDER)];

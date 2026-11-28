@@ -13,7 +13,7 @@ dbt builds the `marts` schema inside the kitchen app's own Azure SQL database, f
 
 The nightly build signs in as `kitchen-github-<env>-warehouse`, and the Deploy Dev migration step gives it its database rights. `packages/db/sql/warehouse-builder.sql` grants them:
 
-- `SELECT` on `dbo`, so it can read every app table and write none.
+- `SELECT` on `dbo`, so it can read the app tables and write none. Two things are denied: the bank connection tables (`plaid_*`) and `user.entra_object_id`.
 - Ownership of `marts`, plus `CREATE TABLE` and `CREATE VIEW`. It can build, rebuild and drop objects in `marts` only, because creating in any other schema also needs `ALTER` on that schema.
 
 `marts` is owned by the builder, not by `dbo`. That breaks the ownership chain from its views to the app's tables, so a view in `marts` can't be used to write app data. `packages/db/src/warehouseBuilder.test.ts` checks this.

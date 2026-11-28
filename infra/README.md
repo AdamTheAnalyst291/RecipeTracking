@@ -423,7 +423,7 @@ Do this only if Prod's data is lost or wrong and the app must run on the restore
 
 dbt builds the `marts` schema inside each environment's app database every night (ADR-28, card W1). `warehouse/README.md` describes the project. Like the backup, it runs as an identity of its own, `kitchen-github-<env>-warehouse`, in a GitHub Environment of its own, `<env>-warehouse`. That environment has no reviewer, because a scheduled job can't wait for one, and allows `main` only. The identity can:
 
-- read every table in `dbo`, and write none of them
+- read the tables in `dbo` except the bank connections (`plaid_*`) and `user.entra_object_id`, and write none of them
 - own the `marts` schema and create tables and views there, and nowhere else (`packages/db/sql/warehouse-builder.sql`, granted by the Deploy Dev migration step)
 - read the one Key Vault secret `ntfy-topic`, for the failure alert. The role is scoped to that secret, not the vault.
 

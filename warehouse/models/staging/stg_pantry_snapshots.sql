@@ -6,7 +6,7 @@ select
     s.unit_id,
     s.package_quantity,
     s.price_cents,
-    cast(s.price_cents / 100.0 as decimal(19, 2)) as price,
+    {{ cents_to_dollars('s.price_cents') }} as price,
     s.price_date,
     s.taken_at
 from {{ source('app', 'pantry_snapshot') }} s

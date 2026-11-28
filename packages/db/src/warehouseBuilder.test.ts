@@ -38,6 +38,15 @@ describe.skipIf(!testServer)("warehouse builder", () => {
 
     expect(await can("SELECT TOP 1 * FROM dbo.household")).toBe(true);
     expect(await can("SELECT TOP 1 * FROM dbo.pantry_snapshot")).toBe(true);
+    expect(await can("SELECT TOP 1 id, household_id, display_name FROM dbo.[user]")).toBe(true);
+  });
+
+  it("can't read sign-in identities or the bank connections", async () => {
+    await grantWarehouseBuilder(pool, name);
+    expect(await can("SELECT TOP 1 entra_object_id FROM dbo.[user]")).toBe(false);
+    expect(await can("SELECT TOP 1 * FROM dbo.plaid_item")).toBe(false);
+    expect(await can("SELECT TOP 1 * FROM dbo.plaid_item_account")).toBe(false);
+    expect(await can("SELECT TOP 1 * FROM dbo.plaid_withdrawn")).toBe(false);
   });
 
   it("owns the marts schema, so it can build, rebuild and drop tables and views there", async () => {

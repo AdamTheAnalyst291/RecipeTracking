@@ -5,5 +5,5 @@ select
     category_id,
     position,
     amount_cents,
-    cast(amount_cents / 100.0 as decimal(19, 2)) as amount
+    {{ cents_to_dollars('amount_cents') }} as amount
 from {{ source('app', 'money_split') }}

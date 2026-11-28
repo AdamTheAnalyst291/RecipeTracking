@@ -5,6 +5,6 @@ select
     category_id,
     starts_on as budget_month,
     amount_cents,
-    cast(amount_cents / 100.0 as decimal(19, 2)) as amount,
+    {{ cents_to_dollars('amount_cents') }} as amount,
     updated_at
 from {{ source('app', 'money_budget') }}
