@@ -23,6 +23,10 @@ export const MCP_LIMITS = {
   search: 100,
   /** Meals one plan_meals call may add: four a day for a week. */
   mealsToPlan: 28,
+  /** Lines one add_receipt call may carry: well past a big weekly shop. */
+  receiptLines: 200,
+  receiptLineName: 200,
+  receiptStore: 100,
 } as const;
 
 const NOTE =

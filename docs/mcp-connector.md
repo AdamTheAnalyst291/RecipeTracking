@@ -15,9 +15,10 @@ All act within the signed-in member's household, through the same functions and 
 | `plan_meals` | Adds up to 28 meals to the plan. If any recipe id is wrong, none are added. |
 | `build_shopping_list` | A new list from the plan for the given days, less what staples hold. |
 | `mark_cooked` | "I made this": takes the ingredients out of pantry stock and records it. Can't be undone. |
+| `add_receipt` | Saves a receipt Claude read (up to 200 lines) to the price ledger; matched staples take its price when it is newer than theirs. Says which lines weren't matched. Claude confirms the lines with you first. |
 | `save_recipe` | A new recipe from a web page (the importer, which only reaches public websites) or from fields Claude read from text. Saved straight away, without the web app's check-the-draft step. |
 
-Recipe and page text is untrusted data. The tool descriptions tell Claude to write only when the person asks, but that is guidance, not a control: keep the connector asking for approval before write tools (**Settings → Connectors**), above all `save_recipe` with a URL, which fetches whatever address Claude gives.
+Recipe, receipt and page text is untrusted data. The tool descriptions tell Claude to write only when the person asks, but that is guidance, not a control: keep the connector asking for approval before write tools (**Settings → Connectors**), above all `save_recipe` with a URL, which fetches whatever address Claude gives.
 
 ## How sign-in works
 
@@ -104,7 +105,7 @@ npx @modelcontextprotocol/inspector@2.15.0
 In Inspector, set the transport to **Streamable HTTP**, the connection type to **Via Proxy**, and the URL to `$mcp`. The endpoint refuses browser-direct calls, because they carry an `Origin` header, and it has no CORS preflight.
 
 - **Without signing in:** **Connect** must fail with 401.
-- **Signing in:** under **Authentication**, set the client ID to `$claude` and leave the secret empty: Inspector redeems the code from the browser through the SPA redirect. Set the scope to the value of `echo "$mcp/access_as_user offline_access"`. Sign in, then **List Tools**: the eight tools appear, and each read tool answers with your Dev data. The write tools change that data.
+- **Signing in:** under **Authentication**, set the client ID to `$claude` and leave the secret empty: Inspector redeems the code from the browser through the SPA redirect. Set the scope to the value of `echo "$mcp/access_as_user offline_access"`. Sign in, then **List Tools**: the nine tools appear, and each read tool answers with your Dev data. The write tools change that data.
 
 Not yet tried against Dev: whether Inspector's browser-side OAuth can read the metadata document. The Functions app's platform CORS, which allows only the web app, may drop the document's `Access-Control-Allow-Origin: *`. If it does, check from Claude itself (step 5) instead.
 

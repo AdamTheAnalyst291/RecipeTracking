@@ -1,0 +1,13 @@
+{
+  "store": "Corner Market",
+  "date": "2026-11-26",
+  "totalCents": 1884,
+  "items": [
+    { "name": "CM RED LENTILS 2LB", "item": "Red lentils", "priceCents": 398, "quantity": 2, "packageQuantity": 2, "unit": "lb" },
+    { "name": "Whole Milk", "priceCents": 349, "packageQuantity": 1, "unit": "l" },
+    { "name": "BANANAS", "priceCents": 136, "packageQuantity": 2.31, "unit": "lb" },
+    { "name": "XJ QT 4409", "priceCents": 899 },
+    { "name": "MFR COUPON", "priceCents": -75 },
+    { "name": "SALES TAX", "priceCents": 177 }
+  ]
+}

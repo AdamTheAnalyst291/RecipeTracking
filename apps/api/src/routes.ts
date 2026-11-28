@@ -1,7 +1,7 @@
 import type { HttpHandler, HttpMethod } from "@azure/functions";
 import { withAuth, type AuthenticatedHandler, type Challenge } from "./auth.js";
 import { bankServices } from "./bank/services.js";
-import { bankAccess, budgetAccess, cookingAccess, mealPlanAccess, moneyAccess, pantryAccess, recipeStore, shoppingListAccess } from "./database.js";
+import { bankAccess, budgetAccess, cookingAccess, mealPlanAccess, moneyAccess, pantryAccess, receiptAccess, recipeStore, shoppingListAccess } from "./database.js";
 import { createCookingHandler } from "./functions/cooking.js";
 import { health } from "./functions/health.js";
 import { meHandler } from "./functions/me.js";
@@ -35,6 +35,7 @@ const mcp = createMcpHandlers({
   pantry: pantryAccess,
   shopping: shoppingListAccess,
   cooking: cookingAccess,
+  receipts: receiptAccess,
   fetchPage,
 });
 

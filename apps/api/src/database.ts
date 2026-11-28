@@ -1,7 +1,8 @@
-import { connectEntra, createBanks, createBudgets, createCooking, createMealPlan, createMoney, createPantry, createShoppingLists, resolveHousehold, type Pantry } from "@kitchen/db";
+import { connectEntra, createBanks, createBudgets, createCooking, createMealPlan, createMoney, createPantry, createReceipts, createShoppingLists, resolveHousehold, type Pantry } from "@kitchen/db";
 import type { BankAccess } from "./functions/banks.js";
 import type { CookingAccess } from "./functions/cooking.js";
 import type { MealPlanAccess } from "./functions/mealPlan.js";
+import type { ReceiptAccess } from "./mcp/receiptTool.js";
 import type { BudgetAccess } from "./functions/budgets.js";
 import type { MoneyAccess } from "./functions/money.js";
 import type { PantryAccess } from "./functions/pantry.js";
@@ -66,6 +67,13 @@ export const shoppingListAccess: ShoppingListAccess = async (user) => {
   const db = await getPool();
   const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
   return { lists: createShoppingLists(db), householdId };
+};
+
+/** Receipts and the price ledger for the signed-in member's household, against the real database. */
+export const receiptAccess: ReceiptAccess = async (user) => {
+  const db = await getPool();
+  const householdId = await resolveHousehold(db, { objectId: user.objectId, displayName: user.name });
+  return { receipts: createReceipts(db), householdId };
 };
 
 /** Money (accounts, transactions, categories, rules) for the signed-in member's household, against the real database. */

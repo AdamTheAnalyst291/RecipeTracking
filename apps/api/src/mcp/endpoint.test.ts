@@ -58,6 +58,7 @@ function fakeReads(overrides: { recipes?: Partial<RecipeStore>; plan?: Partial<M
     shopping: async () => ({ lists: lists as unknown as ShoppingLists, householdId: HOUSEHOLD }),
     // The write tools are tested against a real database in writeTools.test.ts.
     cooking: async () => Promise.reject(new Error("not in these tests")),
+    receipts: async () => Promise.reject(new Error("not in these tests")),
     fetchPage: async () => Promise.reject(new Error("not in these tests")),
   };
   return { reads, recipes, plan, pantry, lists };
@@ -239,9 +240,9 @@ describe.each([
 
     const names = (readOnly: boolean) => tools.filter((t) => t.annotations?.readOnlyHint === readOnly).map((t) => t.name).sort();
     expect(names(true)).toEqual(["check_pantry", "get_meal_plan", "get_recipes", "get_shopping_list"]);
-    expect(names(false)).toEqual(["build_shopping_list", "mark_cooked", "plan_meals", "save_recipe"]);
+    expect(names(false)).toEqual(["add_receipt", "build_shopping_list", "mark_cooked", "plan_meals", "save_recipe"]);
     // Only cooking takes something away (pantry stock).
-    expect(tools.filter((t) => t.annotations?.destructiveHint).map((t) => t.name)).toEqual(["mark_cooked"]);
+    expect(tools.filter((t) => t.annotations?.destructiveHint).map((t) => t.name).sort()).toEqual(["add_receipt", "mark_cooked"]);
   });
 
   it("get_recipes lists the household's recipes", async () => {
