@@ -55,6 +55,8 @@ app.timer("bankSync", {
 app.timer("receiptReminder", {
   schedule: RECEIPT_REMINDER_SCHEDULE,
   runOnStartup: false,
+  // The next scheduled run is about another week, so a failed push is retried now.
+  retry: { strategy: "fixedDelay", maxRetryCount: 3, delayInterval: { minutes: 10 } },
   handler: async (_timer, context) => {
     await runReceiptReminder(await receiptRemindersForJobs(), services.alert, new Date(), context);
   },

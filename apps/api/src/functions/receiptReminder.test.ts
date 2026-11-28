@@ -87,9 +87,11 @@ describe.skipIf(!testServer)("weekly receipt reminder", () => {
     ["on the schedule in summer (Sunday 7 PM CDT)", "2026-06-15T00:00:00Z", "2026-06-08"],
     ["late, on Monday morning Central", "2026-11-30T15:00:00Z", "2026-11-23"],
     ["late, on the Saturday after", "2026-12-05T18:00:00Z", "2026-11-23"],
-    ["just after Central midnight starts Sunday", "2026-11-29T06:00:00Z", "2026-11-23"],
-    ["just before Central midnight ends Saturday", "2026-11-29T05:59:00Z", "2026-11-16"],
-  ])("takes the week ending on the latest Central Sunday: %s", async (_when, now, week) => {
+    ["at 6 PM on Sunday", "2026-11-30T00:00:00Z", "2026-11-23"],
+    ["late, on Sunday morning, before that week's own evening", "2026-11-29T15:00:00Z", "2026-11-16"],
+    ["just before 6 PM on Sunday", "2026-11-29T23:59:00Z", "2026-11-16"],
+    ["on the Sunday the clocks go forward", "2026-03-09T00:00:00Z", "2026-03-02"],
+  ])("takes the week ending on the latest Sunday evening in Central: %s", async (_when, now, week) => {
     await planDinner(week);
 
     expect(await run(new Date(now))).toBe(true);
@@ -106,6 +108,16 @@ describe.skipIf(!testServer)("weekly receipt reminder", () => {
     expect(await run()).toBe(false);
 
     expect(alert).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports why the push failed even when the week can't be unmarked", async () => {
+    await planDinner("2026-11-24");
+    alert.mockRejectedValueOnce(new Error("ntfy refused the alert (HTTP 500)"));
+    const stuck: ReceiptReminders = { ...reminders, release: () => Promise.reject(new Error("database gone")) };
+
+    await expect(runReceiptReminder(stuck, alert, SUNDAY_EVENING, context)).rejects.toThrow("HTTP 500");
+
+    expect(context.error).toHaveBeenCalledWith(expect.stringContaining("database gone"));
   });
 
   it("sends one push when more than one household planned the week", async () => {
