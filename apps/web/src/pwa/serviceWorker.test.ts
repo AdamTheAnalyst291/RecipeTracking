@@ -207,6 +207,7 @@ describe("the service worker", () => {
     ["anything carrying a token", "/assets/index-aaa.js", { headers: { Authorization: "Bearer token" } }],
     ["a change", "/assets/index-aaa.js", { method: "POST" }],
     ["the environment's settings", "/config.json", {}],
+    ["MSAL's redirect bridge, carrying a sign-in code", "/redirect.html#code=secret-code&state=x", { mode: "navigate" }],
     ["another origin's files", `${API}/assets/index-aaa.js`, {}],
   ])("leaves %s to the browser and keeps nothing", async (_what, url, init) => {
     worker.network.set(url.startsWith("/") ? `${ORIGIN}${url}` : url, () => new Response("private"));
