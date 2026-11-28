@@ -16,12 +16,15 @@
     "@azure/keyvault-secrets": "4.12.0",
     "@kitchen/db": "workspace:*",
     "@kitchen/shared": "workspace:*",
+    "@modelcontextprotocol/server": "2.4.0",
     "jose": "6.2.18",
-    "mssql": "12.8.1"
+    "mssql": "12.8.1",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@types/node": "26.6.7",
-    "@types/mssql": "12.3.0"
+    "@modelcontextprotocol/client": "2.4.0",
+    "@types/mssql": "12.3.0",
+    "@types/node": "26.6.7"
   },
   "files": [
     "dist",
